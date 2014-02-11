@@ -2,7 +2,7 @@
 BUILDNUM = 9
 # USERMODE = TRUE
 
-PROG = samblaster$(BUILDNUM)
+PROG = samblaster
 OBJS = samblaster.o
 
 ifdef USERMODE

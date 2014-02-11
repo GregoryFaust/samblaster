@@ -782,9 +782,9 @@ void printUsageString()
 
         "Usage:\n"
         "For use with as a post process on an aligner (eg. bwa mem):\n"
-        "     bwa mem index samp.r1.fq sam.r2.fq | samblaster [-s samp.split.sam] [-d samp.disc.sam] | samtools view -Sb - > samp.out.bam\n"
+        "     bwa mem index samp.r1.fq samp.r2.fq | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
         "For use with a pre-existing bam file to pull split reads and/or discordants:\n"
-        "     samtools view -h samp.bam | samblaster [-s samp.split.sam] [-d samp.disc.sam] -o /dev/null\n\n"
+        "     samtools view -h samp.bam | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] -o /dev/null\n\n"
 
         "Input/Output Options:\n"
         "-i --input          FILE Input sam file [stdin].\n"
