@@ -24,7 +24,7 @@ cp samblaster /usr/local/bin/.
 ~~~~~~~~~~~~~~~~~~
 
 ##Usage
-By default, samblaster is a tool that takes SAM input from stdin and write SAM to stdout with duplicates marked (flag 0x400 set).
+By default, samblaster is a tool that takes SAM input from **stdin** and write SAM to **stdout** with duplicates marked (flag 0x400 set).
 
 samblaster -h will print the following help message:
 
@@ -37,7 +37,7 @@ For use with as a post process on an aligner (eg. bwa mem):
      bwa mem index samp.r1.fq samp.r2.fq | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam
 For use with a pre-existing bam file to pull split reads and/or discordants:
      samtools view -h samp.bam | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] -o /dev/null
-
+'''
 Input/Output Options:
 -i --input          FILE Input sam file [stdin].
 -o --output         FILE Output sam file for all input alignments [stdout].
@@ -49,19 +49,20 @@ Other Options:
 -e --excludeDups         Exclude reads marked as duplicates from discordant and/or splitter file.
 -c --maxSplitCount  INT  Maximum number of split alignments for a read to be included in splitter file.[2]
 -m --minNonOverlap  INT  Minimum non-overlaping base pairs between two alignments for a read to be included in splitter file. [20]
-
+'''
 ### Duplicate Identification:
-A **duplicate** read pair is defined as a pair that has the same seq/strand/starting-reference-offset *signature* for each mapped read as a previously seen read pair.
-For pairs in which both reads are mapped, both signatures much match.
+A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.
+The *signature* is comprised of the combination of the sequence name, strand, and starting reference offset of the alignment.
+For pairs in which both reads are mapped, both signatures must match.
 For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan.
 No doubly unmapped pair will be marked as a duplicate.
 
 ### Discordant Identification:
 A **discordant** read pair is one which meets all of the following criteria:
 - Both side of the read pair are mapped (neither flag 0x4 or 0x8 is set).
-- The **properly paired** flag is set (0x02).
-- Secondary alignments (flag 0x100) are never output as a discordant, although a discordant pair can have secondary alignments associated with them.
-
+- The *properly paired* flag is set (0x2).
+- Secondary alignments (flag 0x100) are never output as discordant, although a discordant pair can have secondary alignments associated with them.
+- Duplicate read pairs that meet the above criteria will be output as discordant unless the **-e** option is used.
      
 ### Split Read Identification:
 
