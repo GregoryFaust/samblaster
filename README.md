@@ -7,7 +7,7 @@ Current support for Linux only
 
 Created by Greg Faust (gf4ea@virginia.edu)
 
-Ira Hall Lab, University of Virginia
+[Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 ##Summary
 samblaster is a program for quicky processing read-id sorted paired-end SAM files.  It can mark duplicate read pairs, and optionally simultaneously output discordant read pairs and/or split read mappings to separate sam files.
 
@@ -52,9 +52,9 @@ Other Options:
 -m --minNonOverlap  INT  Minimum non-overlaping base pairs between two alignments for a read to be included in splitter file. [20]
 
 ### Duplicate Recognition:
-A **duplicate** read pair is defined as a pair that has the same seq/strand/starting-reference-offset for each mapped read as a previously seen read pair. 
-For pairs in which both sides are mapped, both sides much match.  
-For pairs in which only one side is mapped, just the information from the mapped read is used.  
+A **duplicate** read pair is defined as a pair that has the same seq/strand/starting-reference-offset *signature* for each mapped read as a previously seen read pair.
+For pairs in which both reads are mapped, both signatures much match.
+For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan.
 No doubly unmapped pair will be marked as a duplicate.
 
 ### Discordant Recognition:
@@ -64,5 +64,6 @@ A **discordant** read pair is one which meets all of the following criteria:
 - Secondary alignments (flag 0x100) are never output as a discordant, although a discordant pair can have secondary alignments associated with them.
 
      
+### Split Read Recognition:
 
 
