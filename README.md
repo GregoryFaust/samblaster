@@ -86,6 +86,9 @@ A **discordant** read pair is one which meets all of the following criteria:
 - Duplicate read pairs that meet the above criteria will be output as discordant unless the **-e** option is used.
      
 ---
-**SPLIT READ IDENTIFICATION:**
-
-
+**SPLIT READ IDENTIFICATION:**  
+**Split Read** alignments are derived from a single read when one portion of the read aligns to a different region of the reference genome than another portion of the read.  Such pairs of alignments often define a structural variant (SV) breakpoint, and are therefore useful input to SV detection algorithms such as [*lumpy*](https://github.com/arq5x/lumpy-sv/).  *samblaster* uses the following strategy to find split reads alignments.
+- Identify reads that have between two and **--maxSplitCount** alignments. 
+- Sort these alignments by their strand normalized position along the read.
+- Two alignments are output as splitters if they are adjacent on the read, and each covers at least **--minNonOverlap** base pairs of the read that the other does not.
+- Split read alignments that are part of a duplicate read will be output unless the **-e** option is used.
