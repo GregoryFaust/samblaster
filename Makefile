@@ -1,22 +1,22 @@
 # Determine the samblaster build number
-BUILDNUM = 9
-# USERMODE = TRUE
+BUILDNUM = 14
+# INTERNAL = TRUE
 
-PROG = samblaster
-OBJS = samblaster.o
+OBJS = samblaster.o sbhash.o
 
-ifdef USERMODE
-CCFLAGS  = -Wall -Winline -O3 -D COMPILE_USER_MODE -D BUILDNUM=$(BUILDNUM)
-else
+ifdef INTERNAL
+PROG = samblaster$(BUILDNUM)
 CCFLAGS  = -Wall -Winline -O3 -g -D BUILDNUM=$(BUILDNUM)
+else
+PROG = samblaster
+CCFLAGS  = -Wall -O3 -D BUILDNUM=$(BUILDNUM)
 endif
 
 CC	 = gcc
 CPP      = g++
 
-# We need gnu++0x to get the hash table set in stl.
 CFLAGS = $(CCFLAGS) -std=gnu99
-CPPFLAGS = $(CCFLAGS) -std=gnu++0x
+CPPFLAGS = $(CCFLAGS)
 
 SAMBLASTER: $(PROG)
 
