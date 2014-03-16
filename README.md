@@ -78,7 +78,7 @@ Other Options:
 
 ---
 **DUPLICATE IDENTIFICATION:**  
-A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and starting reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
+A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
 2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan.
@@ -90,16 +90,16 @@ A **duplicate** read pair is defined as a pair that has the same *signature* for
 A **discordant** read pair is one which meets all of the following criteria:
 
 1. Both side of the read pair are mapped (neither FLAG 0x4 or 0x8 is set).
-2. The *properly paired* FLAG is not set (0x2).
+2. The *properly paired* FLAG (0x2) is not set.
 3. Secondary alignments (FLAG 0x100) are never output as discordant, although a discordant read pair can have secondary alignments associated with them.
 4. Duplicate read pairs that meet the above criteria will be output as discordant unless the **-e** option is used.
      
 ---
 **SPLIT READ IDENTIFICATION:**  
-**Split Read** alignments are derived from a single read when one portion of the read aligns to a different region of the reference genome than another portion of the read.  Such pairs of alignments often define a structural variant (SV) breakpoint, and are therefore useful input to SV detection algorithms such as [LUMPY](https://github.com/arq5x/lumpy-sv/).  *samblaster* uses the following strategy to find split reads alignments.
+**Split Read** alignments are derived from a single read when one portion of the read aligns to a different region of the reference genome than another portion of the read.  Such pairs of alignments often define a structural variant (SV) breakpoint, and are therefore useful input to SV detection algorithms such as [LUMPY](https://github.com/arq5x/lumpy-sv/).  *samblaster* uses the following strategy to identify split reads alignments.
 
 1. Identify reads that have between two and **--maxSplitCount** alignments. 
-2. Sort these alignments by their strand normalized position along the read.
+2. Sort these alignments by their strand-normalized position along the read.
 3. Two alignments are output as splitters if they are adjacent on the read, and meet these criteria:
     - each covers at least **--minNonOverlap** base pairs of the read that the other does not.
     - the two alignments map to different reference sequences and/or strands.
