@@ -1005,17 +1005,17 @@ void printUsageString()
         "-o --output          FILE Output sam file for all input alignments [stdout].\n"
         "-d --discordantFile  FILE Output discordant read pairs to this file. [no discordant file output]\n"
         "-s --splitterFile    FILE Output split reads to this file abiding by paramaters below. [no splitter file output]\n"
-        "-u --unmappedFile    FILE Output unmapped/clipped reads as fastq to this file abiding by parameters below. [no unmapped file output].\n"
+        "-u --unmappedFile    FILE Output unmapped/clipped reads as FASTQ to this file abiding by parameters below. [no unmapped file output].\n"
         "                          Requires soft clipping in input file.  Will output FASTQ if QUAL information available, otherwise FASTA.\n\n"
 
         "Other Options:\n"
         "-a --acceptDupMarks       Accept duplicate marks already in input file instead of looking for duplicates in the input.\n"
-        "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter and/or unmapped file.\n"
+        "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "   --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]\n"
         "   --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]\n"
         "   --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]\n"
         "   --minNonOverlap    INT Minimum non-overlaping base pairs between two alignments for a read to be included in splitter file. [20]\n"
-        "   --minClipSize      INT Minumum clipped bases to be included in unmapped file. [20]\n"
+        "   --minClipSize      INT Minumum number of bases a mapped read must be clipped to be included in unmapped file. [20]\n"
         "-q --quiet                Output fewer statistics.\n";
     
         printVersionString();
