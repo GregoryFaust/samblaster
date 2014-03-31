@@ -1,7 +1,11 @@
 #*samblaster*
 
-Written by Greg Faust (gf4ea@virginia.edu)  
+**Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
+
+**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://arxiv.org/abs/1403.7486)
+
+---
 
 **Current version:** 0.1.14
 
