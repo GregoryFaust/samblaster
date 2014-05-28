@@ -3,7 +3,8 @@
 **Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
-**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://arxiv.org/abs/1403.7486)
+*samblaster* has been accepted for publication in Oxford University Press Journal *Bioinformatics*.
+**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/05/07/bioinformatics.btu314.abstract)
 
 ---
 
@@ -12,7 +13,7 @@
 Current support for Linux only.
 
 ##Summary
-*samblaster* is a fast and flexible program for marking duplicates in *read-id grouped<sup>\*</sup>* paired-end SAM files.
+*samblaster* is a fast and flexible program for marking duplicates in *read-id grouped<sup>*</sup>* paired-end SAM files.
 It can also optionally output discordant read pairs and/or split read mappings to separate SAM files, and/or unmapped/clipped reads to a separate FASTQ file.
 When marking duplicates, *samblaster* will require approximately 20MB of memory per 1M read pairs.
 
@@ -34,8 +35,8 @@ cp samblaster /usr/local/bin/.
 ##Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
-By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout** with duplicates marked. Input SAM file must contain paired end data, contain a sequence header, and be sorted by read ids.
-Output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.
+By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see below), must contain a sequence header, and must be grouped by read ids.
+By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
 **COMMON USAGE SCENARIOS:**  
 
@@ -69,6 +70,7 @@ Input/Output Options:
 Other Options:
 -a --acceptDupMarks       Accept duplicate marks already in input file instead of looking for duplicates in the input.
 -e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.
+-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).
    --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]
    --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]
    --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]
@@ -86,9 +88,9 @@ Other Options:
 A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
-2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan.
+2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan. In an orphan pair, the unmapped read need not appear in the input file. In addition, non-paired single read alignments will be treated the same as an orphan pair with a missing unmapped read.
 3. No doubly unmapped pair will be marked as a duplicate.
-4. Any *secondary* alignment (FLAG 0x100) associated with a duplicate primary alignment will also be marked as a duplicate.
+4. Any *secondary* alignment (FLAG 0x100 or 0x800) associated with a duplicate primary alignment will also be marked as a duplicate.
 
 ---
 **DISCORDANT READ PAIR IDENTIFICATION:**  
@@ -96,7 +98,7 @@ A **discordant** read pair is one which meets all of the following criteria:
 
 1. Both side of the read pair are mapped (neither FLAG 0x4 or 0x8 is set).
 2. The *properly paired* FLAG (0x2) is not set.
-3. Secondary alignments (FLAG 0x100) are never output as discordant, although a discordant read pair can have secondary alignments associated with them.
+3. Secondary alignments (FLAG 0x100 or 0x800) are never output as discordant, although a discordant read pair can have secondary alignments associated with them.
 4. Duplicate read pairs that meet the above criteria will be output as discordant unless the **-e** option is used.
      
 ---
