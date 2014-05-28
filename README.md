@@ -9,15 +9,16 @@
 
 **Current version:** 0.1.15
 
-**(NOTE: This is major new release.  See release notes on _releases_ tab for details.)**
-
 Current support for Linux only.
 
 ##Summary
-*samblaster* is a fast and flexible program for marking duplicates in read-id sorted paired-end SAM files.
+*samblaster* is a fast and flexible program for marking duplicates in *read-id grouped<sup>\*</sup>* paired-end SAM files.
 It can also optionally output discordant read pairs and/or split read mappings to separate SAM files, and/or unmapped/clipped reads to a separate FASTQ file.
-
 When marking duplicates, *samblaster* will require approximately 20MB of memory per 1M read pairs.
+
+<sup>\*</sup>A *read-id grouped* SAM file is one in which all alignments for a read-id are in adjacent lines.
+Aligners naturally produce such files.
+They can also be created by sorting a SAM file by read-id, but sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
 
 ##Installation
 *samblaster* is self contained and therefore has no installation dependencies beyond **g++** and **make**.  
