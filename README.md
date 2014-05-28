@@ -34,7 +34,7 @@ See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pd
 By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>\*<sup>__.
 By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
-<sup>\*</sup>A **read-id grouped** SAM file is one in which all alignments for a read-id are in adjacent lines.
+__\*__A **read-id grouped** SAM file is one in which all alignments for a read-id are in adjacent lines.
 Aligners naturally produce such files.
 They can also be created by sorting a SAM file by read-id, but sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
 
