@@ -3,7 +3,7 @@
 **Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
-*samblaster* has been accepted for publication in Oxford University Press Journal *Bioinformatics*.
+*samblaster* has been accepted for publication in Oxford University Press Journal *Bioinformatics*.  
 **Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/05/07/bioinformatics.btu314.abstract)
 
 ---
@@ -24,7 +24,7 @@ They can also be created by sorting a SAM file by read-id, but sorting the input
 ##Installation
 *samblaster* is self contained and therefore has no installation dependencies beyond **g++** and **make**.  
 
-To manually install *samblaster*, do the following:
+*samblaster* can be downloaded from the **_releases_** tab or manually downloaded via *git clone*.  Afterwards, simply use *make* and copy *samblaster* to a directory in your path.  For example:
 ~~~~~~~~~~~~~~~~~~
 git clone git://github.com/GregoryFaust/samblaster.git
 cd samblaster
@@ -35,7 +35,7 @@ cp samblaster /usr/local/bin/.
 ##Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
-By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see below), must contain a sequence header, and must be grouped by read ids.
+By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be grouped by read ids.
 By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
 **COMMON USAGE SCENARIOS:**  
@@ -84,7 +84,7 @@ Other Options:
 ```
 
 ---
-**DUPLICATE IDENTIFICATION:**  
+**DUPLICATE IDENTIFICATION:<a name="DupIdentification"></a>**  
 A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
