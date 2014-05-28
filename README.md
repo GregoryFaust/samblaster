@@ -13,7 +13,7 @@
 Current support for Linux only.
 
 ##Summary
-*samblaster* is a fast and flexible program for marking duplicates in __read-id grouped<sup>*</sup>__ paired-end SAM files.
+*samblaster* is a fast and flexible program for marking duplicates in __read-id grouped<sup>1</sup>__ paired-end SAM files.
 It can also optionally output discordant read pairs and/or split read mappings to separate SAM files, and/or unmapped/clipped reads to a separate FASTQ file.
 When marking duplicates, *samblaster* will require approximately 20MB of memory per 1M read pairs.
 
@@ -31,10 +31,10 @@ cp samblaster /usr/local/bin/.
 ##Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
-By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>\*<sup>__.
+By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
 By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
-__\*__A **read-id grouped** SAM file is one in which all alignments for a read-id are in adjacent lines.
+__<sup>1</sup>A read-id grouped__ SAM file is one in which all alignments for a read-id are in adjacent lines.
 Aligners naturally produce such files.
 They can also be created by sorting a SAM file by read-id, but sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
 
