@@ -7,7 +7,7 @@
 
 ---
 
-**Current version:** 0.1.14
+**Current version:** 0.1.15
 
 **(NOTE: This is major new release.  See release notes on _releases_ tab for details.)**
 
