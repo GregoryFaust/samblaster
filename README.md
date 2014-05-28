@@ -31,12 +31,13 @@ cp samblaster /usr/local/bin/.
 ##Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
-By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file should contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
+By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file usually contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
 By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
-__<sup>1</sup>A read-id grouped__ SAM file is one in which all alignments for a read-id are in adjacent lines.
+__<sup>1</sup>A read-id grouped__ SAM file is one in which all alignments for a read-id are grouped together in adjacent lines.
 Aligners naturally produce such files.
-They can also be created by sorting a SAM file by read-id, but sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
+They can also be created by sorting a SAM file by read-id. 
+But as shown below, sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
 
 **COMMON USAGE SCENARIOS:**  
 
@@ -88,7 +89,7 @@ Other Options:
 A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
-2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan. In an orphan pair, the unmapped read need not appear in the input file. In addition, non-paired single read alignments will be treated the same as an orphan pair with a missing unmapped read.
+2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan. In an orphan pair, the unmapped read need not appear in the input file. In addition, mapped non-paired single read alignments will be treated the same as an orphan pair with a missing unmapped read.
 3. No doubly unmapped pair will be marked as a duplicate.
 4. Any *secondary* alignment (FLAG 0x100 or 0x800) associated with a duplicate primary alignment will also be marked as a duplicate.
 
