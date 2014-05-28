@@ -1,12 +1,21 @@
 /* -*- Mode: C++ ; indent-tabs-mode: nil ; c-file-style: "stroustrup" -*-
 
     Project: samblaster
-             Fast mark duplicates in read-ID sorted SAM file.
+             Fast mark duplicates in read-ID grouped SAM file.
              Also, optionally pull discordants, splitters, and/or unmappend/clipped reads.
     Author:  Greg Faust (gf4ea@virginia.edu)
     Date:    October 2013
 
     File:    sbhash.cpp  code file for our hash table.
+
+    License Information:
+
+    Copyright 2013,2014 Gregory G. Faust
+
+    Licensed under the MIT license (the "License");
+    You may not use this file except in compliance with the License.
+    You may obtain a copy of the License at http://opensource.org/licenses/MIT
+
 */
 
 #include <stdlib.h>
