@@ -176,8 +176,8 @@ inline bool isValue(UINT64 value)
     return ((value & 1) != 0);
 }
 
-#define numOfSizes 26
-static UINT32 hashTableSizes [] = {23, 47, 97, 199, 409, 823, 1741, 3739, 7517, 15173, 30727, 62233, 126271, 256279, 520241, 1056323, 
+#define numOfSizes 27
+static UINT32 hashTableSizes [] = {0, 23, 47, 97, 199, 409, 823, 1741, 3739, 7517, 15173, 30727, 62233, 126271, 256279, 520241, 1056323, 
                                    2144977, 4355707, 8844859, 17961079, 36473443, 74066549, 150406843, 305431229, 620239453, 1259520799};
 
 inline UINT32 hash(UINT64 value)
@@ -187,11 +187,15 @@ inline UINT32 hash(UINT64 value)
 
 void hashTableInit(hashTable_t * ht, int size)
 {
-    if (size == 0) size = hashTableSizes[0];
+    ht->entries = 0;
     ht->size = size;
+    if (size == 0) 
+    {
+        ht->table = (UINT64 *)NULL;
+        return;
+    }
     ht->table = (UINT64 *)calloc(ht->size, sizeof(UINT64));
     if (ht->table == NULL) fatalError("samblaster: unable to allocate hash table.\n");
-    ht->entries = 0;
 }
 
 hashTable_t * makeHashTable()
@@ -207,7 +211,6 @@ hashTable::~hashTable()
 {
     if (table != NULL) free(table);
 }
-
 
 void resizeHashTable(hashTable_t * ht)
 {
@@ -253,7 +256,7 @@ void resizeHashTable(hashTable_t * ht)
     }
 
     // Free up the oldtable.
-    free(oldtable);
+    if (oldtable != NULL) free(oldtable);
 }
 
 bool hashTableInsert(hashTable_t * ht, UINT64 value)
