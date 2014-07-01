@@ -4,7 +4,7 @@
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
 *samblaster* has been accepted for publication in Oxford University Press Journal *Bioinformatics*.  
-**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/05/07/bioinformatics.btu314.abstract)
+**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/06/05/bioinformatics.btu314)
 
 ---
 
