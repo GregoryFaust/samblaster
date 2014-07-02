@@ -11,9 +11,9 @@
 <a mimetype="application/pdf" href="https://github.com/GregoryFaust/samblaster/blob/master/sbhash.h" download>supplement</a>
 
 
--->
-[foo](http://faculty.virginia.edu/irahall/support/yaha/YAHA_User_Guide.0.1.82.pdf) 
 
+[foo](http://faculty.virginia.edu/irahall/support/yaha/YAHA_User_Guide.0.1.82.pdf) 
+-->
 
 ---
 
