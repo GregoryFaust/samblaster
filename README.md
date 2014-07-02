@@ -11,8 +11,9 @@
 <a mimetype="application/pdf" href="https://github.com/GregoryFaust/samblaster/blob/master/sbhash.h" download>supplement</a>
 
 
--->
+
 [foo](https://www.dropbox.com/s/ezglfm0zdbo98x9/Getting%20Started.pdf) 
+-->
 
 ---
 
