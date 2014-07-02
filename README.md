@@ -9,6 +9,8 @@
 **Also see:** [SAMBLASTER_Supplemental.pdf] (https://github.com/GregoryFaust/samblaster/blob/master/SAMBLASTER_Supplemental.pdf) in this repository for a more complete comparison of *samblaster* vs. *Picard* using NA12878 as a sample dataset.
 -->
 
+
+[foo](http://www.sciencemag.org/content/342/6158/632.full.pdf) 
 <a mimetype="application/pdf" href="https://github.com/GregoryFaust/samblaster/blob/master/sbhash.h" download>supplement</a>
 
 
