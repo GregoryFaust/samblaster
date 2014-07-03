@@ -6,7 +6,7 @@
 *samblaster* has been published in the Oxford University Press Journal *Bioinformatics*.  
 **Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/06/05/bioinformatics.btu314)
 
-**Also see:** [SAMBLASTER_Supplemental.pdf] (http://faculty.virginia.edu/irahall/support/samblaster/SAMBLASTER_Supplemental.pdf) for a more complete comparison of *samblaster* vs. *Picard* using NA12878 as a sample dataset.  Click the preceeding link or downloading the file from this repository.
+**Also see:** [SAMBLASTER_Supplemental.pdf] (http://faculty.virginia.edu/irahall/support/samblaster/SAMBLASTER_Supplemental.pdf) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.  Click the preceeding link or download the file from this repository.
 
 ---
 
