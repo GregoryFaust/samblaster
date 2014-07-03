@@ -3,17 +3,10 @@
 **Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
-*samblaster* has been accepted for publication in Oxford University Press Journal *Bioinformatics*.  
-**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/06/05/bioinformatics.btu314)  
-<!---
-**Also see:** [SAMBLASTER_Supplemental.pdf] (https://github.com/GregoryFaust/samblaster/blob/master/SAMBLASTER_Supplemental.pdf) in this repository for a more complete comparison of *samblaster* vs. *Picard* using NA12878 as a sample dataset.
+*samblaster* has been published in the Oxford University Press Journal *Bioinformatics*.  
+**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/06/05/bioinformatics.btu314)
 
-<a mimetype="application/pdf" href="https://github.com/GregoryFaust/samblaster/blob/master/sbhash.h" download>supplement</a>
-
-
-
-[foo](http://faculty.virginia.edu/irahall/support/yaha/YAHA_User_Guide.0.1.82.pdf) 
--->
+**Also see:** [SAMBLASTER_Supplemental.pdf] (http://faculty.virginia.edu/irahall/support/samblaster/SAMBLASTER_Supplemental.pdf) for a more complete comparison of *samblaster* vs. *Picard* using NA12878 as a sample dataset.  Click the preceeding link or downloading the file from this repository.
 
 ---
 
