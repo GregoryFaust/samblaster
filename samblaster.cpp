@@ -615,7 +615,7 @@ void calcOffsets(splitLine_t * line)
         }
         else
         {
-            fprintf(stderr, "Unknown opcode '%c' in ", opCode);
+            fprintf(stderr, "Unknown opcode '%c' in CIGAR string: '%s'\n", opCode, line->fields[CIGAR]);
         }
         first = false;
     }
@@ -733,8 +733,11 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
     {
         // Get the NULL one in the first slot.
         if (second == NULL) swapPtrs(&first, &second);
+        // If the only read says its paired, and it is unmapped or its mate is mapped, something is wrong.
         if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) brokenBlock(block, count);
-        // Now MAKE a dummy record, but don't put it into the block.
+        // If the only read we have is unmapped, then it can't be a dup.
+        if (isUnmapped(second)) return;
+        // Now MAKE a dummy record for the first read, but don't put it into the block.
         // That way we won't have to worry about it getting output, or when processing splitters etc.
         // But, we will have to remember to dispose of it.
         first = getSplitLine();
