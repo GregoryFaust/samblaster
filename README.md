@@ -11,7 +11,7 @@ Click the preceeding link or download the file from this repository.
 
 ---
 
-**Current version:** 0.1.16
+**Current version:** 0.1.18
 
 Current support for Linux only.
 
