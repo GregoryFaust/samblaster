@@ -1,5 +1,5 @@
 # Determine the samblaster build number
-BUILDNUM = 17
+BUILDNUM = 18
 # INTERNAL = TRUE
 
 OBJS = samblaster.o sbhash.o

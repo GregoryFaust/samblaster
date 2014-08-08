@@ -247,7 +247,7 @@ void unsplitSplitLine(splitLine_t * line)
         line->fields[i][-1] = '\t';
     }
     // Now put the newline back in.
-    line->buffer[line->bufLen-1] = '\n';    
+    line->buffer[line->bufLen-1] = '\n';
     // Mark as no longer split.
     line->split = false;
 }
@@ -274,8 +274,9 @@ void changeFieldSplitLine(splitLine_t * line, int fnum, char * newValue)
         {
             fatalError("samblaster: New buffer length exceeds maximum while changing field value.\n");
         }
-        // Make the right sized hole for the copy.
-        int distance = 1 + line->bufLen - (fp - line->buffer) - move;
+        // Calculate the size of the tail that is still needed.
+        int distance = 1 + line->bufLen - (fp - line->buffer) - oldLen;
+        // Do the copy.
         memmove(fp+newLen, fp+oldLen, distance);
         // Correct the total length of the buffer.
         line->bufLen += move;
