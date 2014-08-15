@@ -287,6 +287,26 @@ void changeFieldSplitLine(splitLine_t * line, int fnum, char * newValue)
     memcpy(fp, newValue, newLen);
 }
 
+void addTag(splitLine_t * line, const char * header, const char * val)
+{
+    int hl = strlen(header);
+    int vl = strlen(val);
+    // Make sure everything will fit.
+    char * ptr = line->buffer + line->bufLen - 1;
+    line->bufLen += hl + vl;
+    if ((size_t)line->bufLen > line->maxBufLen)
+    {
+        fatalError("samblaster: New buffer length exceeds maximum while adding Mate tags.\n");
+    }
+    // Copy over the header and the value.
+    ptr = (char *)mempcpy(ptr, header, hl);
+    ptr = (char *)mempcpy(ptr, val, vl);
+    // Add the null terminator for the field, and for the record.
+    ptr[0] = 0;
+    ptr[1] = 0;
+}
+
+
 // Read a line from the file and split it.
 splitLine_t * readLine(FILE * input)
 {
@@ -335,12 +355,16 @@ inline void writeLine(splitLine_t * line, FILE * output)
 #define QUAL  10
 #define TAGS  11
 
+
 // Define SAM flag accessors.
+#define MULTI_SEGS 0x1
+#define FIRST_SEG  0x40
+#define SECOND_SEG 0x80
 inline bool checkFlag(splitLine_t * line, int bits) { return ((line->flag & bits) != 0); }
 
 inline void setFlag(splitLine_t * line, int bits) { line->flag |= bits; }
 
-inline bool isPaired(splitLine_t * line) { return checkFlag(line, 0x1); }
+inline bool isPaired(splitLine_t * line) { return checkFlag(line, MULTI_SEGS); }
 
 inline bool isConcordant(splitLine_t * line) { return checkFlag(line, 0x2); }
 
@@ -358,9 +382,9 @@ inline bool isReverseStrand(splitLine_t * line) { return checkFlag(line, 0x10); 
 
 inline bool isForwardStrand(splitLine_t * line) { return !isReverseStrand(line); }
 
-inline bool isFirstRead(splitLine_t * line) { return checkFlag(line, 0x40); }
+inline bool isFirstRead(splitLine_t * line) { return checkFlag(line, FIRST_SEG); }
 
-inline bool isSecondRead(splitLine_t * line) { return checkFlag(line, 0x80); }
+inline bool isSecondRead(splitLine_t * line) { return checkFlag(line, SECOND_SEG); }
 
 inline bool isSecondaryAlignment(splitLine_t * line) 
 { return (checkFlag(line, 0x100) || checkFlag(line, 0x800)); }
@@ -460,6 +484,7 @@ struct state_struct
     bool           acceptDups;
     bool           excludeDups;
     bool           removeDups;
+    bool           addMateTags;
     bool           quiet;
 };
 typedef struct state_struct state_t;
@@ -486,6 +511,7 @@ state_t * makeState ()
     s->acceptDups = false;
     s->excludeDups = false;
     s->removeDups = false;
+    s->addMateTags = false;
     s->quiet = false;
     // Start this as -1 to indicate we don't know yet.
     // Once we are outputting our first line, we will decide.
@@ -705,6 +731,7 @@ UINT64 splitCount = 0;
 UINT64 unmapClipCount = 0;
 
 // This is the main workhorse that determines if lines are dups or not.
+int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagValue);
 void markDupsDiscordants(splitLine_t * block, state_t * state)
 {
     splitLine_t * first = NULL;
@@ -748,23 +775,46 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         orphan = true;
         dummyFirst = true;
     }
-    // Never mark pairs as dups if both sides are unmapped.
-    else if (isUnmapped(first) && isUnmapped(second))
-    {
-        return;
-    }
     else
     {
+        // Handle the addition of MC and MQ tags if requested.
+        if (state->addMateTags)
+        {
+            int mask = (FIRST_SEG | SECOND_SEG);
+            // Process the first of the pair.
+            // Get the list of reads that match the second of the pair.
+            int count = fillSplitterArray(block, state, second->flag & mask, true);
+            for (int i=0; i<count; ++i)
+            {
+                splitLine_t * line = state->splitterArray[i];
+                addTag(line, "	MC:Z:", first->fields[CIGAR]);
+                addTag(line, "	MQ:i:", first->fields[MAPQ]);
+            }
+            // Process the second of the pair.
+            // Get the list of reads that match the first of the pair.
+            count = fillSplitterArray(block, state, first->flag & mask, true);
+            for (int i=0; i<count; ++i)
+            {
+                splitLine_t * line = state->splitterArray[i];
+                addTag(line, "	MC:Z:", second->fields[CIGAR]);
+                addTag(line, "	MQ:i:", second->fields[MAPQ]);
+            }
+        }
+
+        // Never mark pairs as dups if both sides are unmapped.
+        if (isUnmapped(first) && isUnmapped(second)) return;
+
         // We need to properly handle orphans to get the correct reference offsets and sequence numbers.
         orphan = (isUnmapped(first) || isUnmapped(second));
         // Orphan that needs to be swapped.
-        // We need to unmapped one in the first slot so that they won't all collide in the hash table.
+        // We need the unmapped one in the first slot so that they won't all collide in the hash table.
         if (isMapped(first) && isUnmapped(second))
         {
             swapPtrs(&first, &second);
         }
     }
 
+    // Now look for duplicates.
     if (!state->acceptDups)
     {
         // Calculate and store the second position and sequence name.
@@ -807,6 +857,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             }
         }
     }
+
     // If we have a dummy first, we can't have a discordant pair.
     if (dummyFirst)
     {
@@ -988,11 +1039,11 @@ void processSAMBlock(splitLine_t * block, state_t * state)
     if (state->splitterFile != NULL || state->unmappedClippedFile != NULL)
     {
         // Check the first read for splitter.
-        markSplitterUnmappedClipped(block, state, 0x40, true);
+        markSplitterUnmappedClipped(block, state, FIRST_SEG, true);
         // Check the second read for splitter.
-        markSplitterUnmappedClipped(block, state, 0x80, true);
+        markSplitterUnmappedClipped(block, state, SECOND_SEG, true);
         // Check for a singleton read
-        markSplitterUnmappedClipped(block, state, 0x1, false);
+        markSplitterUnmappedClipped(block, state, MULTI_SEGS, false);
     }
 
     // Now do the output.
@@ -1063,6 +1114,7 @@ void printUsageString()
         "-a --acceptDupMarks       Accept duplicate marks already in input file instead of looking for duplicates in the input.\n"
         "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).\n"
+        "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
         "   --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]\n"
         "   --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]\n"
         "   --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]\n"
@@ -1125,6 +1177,10 @@ int main (int argc, char *argv[])
             argi++;
             state->inputFileName = argv[argi];
             if (streq(state->inputFileName, "-")) state->inputFileName = (char *)"stdin";
+        }
+        else if (streq(argv[argi],"--addMateTags"))
+        {
+            state->addMateTags = true;
         }
         else if (streq(argv[argi],"--maxSplitCount"))
         {
