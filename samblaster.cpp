@@ -622,7 +622,7 @@ void calcOffsets(splitLine_t * line)
     {
         int opLen = parseNextInt(&cigar);
         char opCode = parseNextOpCode(&cigar);
-        if      (opCode == 'M') 
+        if      (opCode == 'M' || opCode == '=' || opCode == 'X')
         { 
             line->raLen += opLen;
             line->qaLen += opLen;
