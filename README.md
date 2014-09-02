@@ -11,7 +11,7 @@ Click the preceeding link or download the file from this repository.
 
 ---
 
-**Current version:** 0.1.18
+**Current version:** 0.1.20
 
 Current support for Linux only.
 
@@ -75,6 +75,7 @@ Other Options:
 -a --acceptDupMarks       Accept duplicate marks already in input file instead of looking for duplicates in the input.
 -e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.
 -r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).
+   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.
    --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]
    --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]
    --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]
