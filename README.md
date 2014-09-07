@@ -3,7 +3,6 @@
 **Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
-*samblaster* has been published in the Oxford University Press Journal *Bioinformatics*.  
 **Please cite:**  
 [Faust, G.G. and Hall, I.M., “SAMBLASTER: fast duplicate marking and structural variant read extraction,” Bioinformatics Sept. 2014; 30(17): 2503-2505.](http://bioinformatics.oxfordjournals.org/content/30/17/2503)
 
