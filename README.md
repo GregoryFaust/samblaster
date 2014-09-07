@@ -4,7 +4,8 @@
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
 *samblaster* has been published in the Oxford University Press Journal *Bioinformatics*.  
-**Please cite:** [SAMBLASTER: fast duplicate marking and structural variant read extraction](http://bioinformatics.oxfordjournals.org/content/early/2014/06/05/bioinformatics.btu314)
+**Please cite:**  
+[Faust, G.G. and Hall, I.M., “SAMBLASTER: fast duplicate marking and structural variant read extraction,” Bioinformatics Sept. 2014; 30(17): 2503-2505.](http://bioinformatics.oxfordjournals.org/content/30/17/2503)
 
 **Also see:** [SAMBLASTER_Supplemental.pdf] (http://faculty.virginia.edu/irahall/support/samblaster/SAMBLASTER_Supplemental.pdf) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.  
 Click the preceeding link or download the file from this repository.
