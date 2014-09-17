@@ -23,8 +23,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <inttypes.h> // support for printing UINT64
 #include <map>
 #include "sbhash.h"
+
+#ifndef _GNU_SOURCE
+// mempcpy is a GNU extension and not available everywhere.
+void *mempcpy(void *dest, const void *src, size_t n)
+{
+    return (char*) memcpy(dest, src, n) + n;
+}
+#endif
 
 // Rename common integer types.
 // I like having these shorter name.
@@ -110,7 +119,7 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 
 // We need to pre-define these for the SAM specific fields.
 typedef UINT32 pos_t; // Type for reference offsets.
-typedef UINT64 sig_t; // Type for signatures for offsets and lengths.
+typedef UINT64 sgn_t; // Type for signatures for offsets and lengths.
 // And the type itself for the next pointer.
 typedef struct splitLine splitLine_t;
 splitLine_t * splitLineFreeList = NULL;
@@ -538,13 +547,13 @@ void deleteState(state_t * s)
 // Signatures
 ///////////////////////////////////////////////////////////////////////////////
 
-inline sig_t calcSig(splitLine_t * first, splitLine_t * second)
+inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
 {
     // Total nonsense to get the compiler to actually work.
     UINT64 t1 = first->pos;
     UINT64 t2 = t1 << 32;
     UINT64 final = t2 | second->pos;
-    return (sig_t)final;
+    return (sgn_t)final;
 }
 
 inline int calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & seqs)
@@ -840,7 +849,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         if (!orphan && needSwap(first, second)) swapPtrs(&first, &second);
 
         // Now find the signature of the pair.
-        sig_t sig = calcSig(first, second);
+        sgn_t sig = calcSig(first, second);
         // Calculate the offset into the signatures array.
         int off = calcSigArrOff(first, second, state->seqs);
         // Attempt insert into the sigs structure.
@@ -1123,7 +1132,7 @@ void printUsageString()
         "-q --quiet                Output fewer statistics.\n";
     
         printVersionString();
-        fprintf(stderr, useString);
+        fprintf(stderr, "%s", useString);
 }
 
 void printUsageStringAbort()
@@ -1378,22 +1387,22 @@ int main (int argc, char *argv[])
     if (!state->quiet)
     {
         if (state->discordantFile != NULL)
-            fprintf(stderr, "samblaster: Output %lu discordant read pairs to %s\n", discCount/2, state->discordantFileName);
+            fprintf(stderr, "samblaster: Output %"PRIu64" discordant read pairs to %s\n", discCount/2, state->discordantFileName);
         if (state->splitterFile != NULL)
-            fprintf(stderr, "samblaster: Output %lu split reads to %s\n", splitCount, state->splitterFileName);
+            fprintf(stderr, "samblaster: Output %"PRIu64" split reads to %s\n", splitCount, state->splitterFileName);
         if (state->unmappedClippedFile != NULL)
-            fprintf(stderr, "samblaster: Output %lu unmapped/clipped reads to %s\n", unmapClipCount, state->unmappedClippedFileName);
+            fprintf(stderr, "samblaster: Output %"PRIu64" unmapped/clipped reads to %s\n", unmapClipCount, state->unmappedClippedFileName);
     }
     
     // Output stats.
     if (state->removeDups)
     {
-        fprintf(stderr, "samblaster: Removed %lu of %lu (%4.2f%%) read ids as duplicates", 
+        fprintf(stderr, "samblaster: Removed %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates", 
                 dupCount, idCount, ((double)100)*dupCount/idCount);
     }
     else
     {
-        fprintf(stderr, "samblaster: Marked %lu of %lu (%4.2f%%) read ids as duplicates", 
+        fprintf(stderr, "samblaster: Marked %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates", 
                 dupCount, idCount, ((double)100)*dupCount/idCount);
     }
     if ((TIMING == 0) || state->quiet)
