@@ -26,6 +26,13 @@
 #include <map>
 #include "sbhash.h"
 
+// Define mempcpy for Mac OS
+#ifdef __APPLE__
+void* mempcpy(void* dst, const void* src, size_t len) {
+    return (char*)memcpy(dst, src, len) + len;
+}
+#endif
+
 // Rename common integer types.
 // I like having these shorter name.
 typedef uint64_t UINT64;
@@ -78,7 +85,7 @@ void fprintTimeSeconds (FILE * out, double seconds, int precision)
         seconds -= minutes * 60;
         fprintf(out, "%dM", minutes);
     }
-    if (hours + minutes > 0) 
+    if (hours + minutes > 0)
     {
         fprintf(out, "%.0fS", seconds);
         fprintf(out, "(%.*fS)", precision, totalseconds);
@@ -98,7 +105,7 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 #include <sys/times.h>
 #include <sys/resource.h>
 #include <time.h>
-#endif // TIMING 
+#endif // TIMING
 
 ///////////////////////////////////////////////////////////////////////////////
 // Split Lines
@@ -110,7 +117,7 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 
 // We need to pre-define these for the SAM specific fields.
 typedef UINT32 pos_t; // Type for reference offsets.
-typedef UINT64 sig_t; // Type for signatures for offsets and lengths.
+typedef UINT64 sign_t; // Type for signatures for offsets and lengths.
 // And the type itself for the next pointer.
 typedef struct splitLine splitLine_t;
 splitLine_t * splitLineFreeList = NULL;
@@ -324,7 +331,7 @@ splitLine_t * readLine(FILE * input)
 inline void outputString(char * str, FILE * output)
 {
     // Do the error checking here so we don't have to do it elsewhere.
-    if (fputs(str, output) < 0) 
+    if (fputs(str, output) < 0)
     {
         fatalError("samblaster: Unable to write to output file.\n");
     }
@@ -386,7 +393,7 @@ inline bool isFirstRead(splitLine_t * line) { return checkFlag(line, FIRST_SEG);
 
 inline bool isSecondRead(splitLine_t * line) { return checkFlag(line, SECOND_SEG); }
 
-inline bool isSecondaryAlignment(splitLine_t * line) 
+inline bool isSecondaryAlignment(splitLine_t * line)
 { return (checkFlag(line, 0x100) || checkFlag(line, 0x800)); }
 
 inline bool isDuplicate(splitLine_t * line) { return checkFlag(line, 0x400); }
@@ -465,7 +472,7 @@ struct state_struct
     char *         outputFileName;
     FILE *         outputFile;
     FILE *         discordantFile;
-    char *         discordantFileName; 
+    char *         discordantFileName;
     FILE *         splitterFile;
     char *         splitterFileName;
     FILE *         unmappedClippedFile;
@@ -526,7 +533,7 @@ void deleteState(state_t * s)
 {
     free(s->splitterArray);
     if (s->sigs != NULL) delete[] s->sigs;
-    for (seqMap_t::iterator iter = s->seqs.begin(); iter != s->seqs.end(); ++iter) 
+    for (seqMap_t::iterator iter = s->seqs.begin(); iter != s->seqs.end(); ++iter)
     {
         free((char *)(iter->first));
     }
@@ -538,13 +545,13 @@ void deleteState(state_t * s)
 // Signatures
 ///////////////////////////////////////////////////////////////////////////////
 
-inline sig_t calcSig(splitLine_t * first, splitLine_t * second)
+inline sign_t calcSig(splitLine_t * first, splitLine_t * second)
 {
     // Total nonsense to get the compiler to actually work.
     UINT64 t1 = first->pos;
     UINT64 t2 = t1 << 32;
     UINT64 final = t2 | second->pos;
-    return (sig_t)final;
+    return (sign_t)final;
 }
 
 inline int calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & seqs)
@@ -553,7 +560,7 @@ inline int calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & s
     int s2 = (second->seqNum * 2) + (isReverseStrand(second) ? 1 : 0);
     int retval = (s1 * seqs.size() * 2) + s2;
 #ifdef DEBUG
-    fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %lu result %d\n", 
+    fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %lu result %d\n",
             first->seqNum, isReverseStrand(first), s1, second->seqNum, isReverseStrand(second), s2, seqs.size(), retval);
 #endif
     return retval;
@@ -623,7 +630,7 @@ void calcOffsets(splitLine_t * line)
         int opLen = parseNextInt(&cigar);
         char opCode = parseNextOpCode(&cigar);
         if      (opCode == 'M' || opCode == '=' || opCode == 'X')
-        { 
+        {
             line->raLen += opLen;
             line->qaLen += opLen;
         }
@@ -735,7 +742,7 @@ int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagV
 void markDupsDiscordants(splitLine_t * block, state_t * state)
 {
     splitLine_t * first = NULL;
-    splitLine_t * second = NULL;    
+    splitLine_t * second = NULL;
     int count = 0;
     for (splitLine_t * line = block; line != NULL; line = line->next)
     {
@@ -840,7 +847,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         if (!orphan && needSwap(first, second)) swapPtrs(&first, &second);
 
         // Now find the signature of the pair.
-        sig_t sig = calcSig(first, second);
+        sign_t sig = calcSig(first, second);
         // Calculate the offset into the signatures array.
         int off = calcSigArrOff(first, second, state->seqs);
         // Attempt insert into the sigs structure.
@@ -896,7 +903,7 @@ int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagV
             if (count >= state->splitterArrayMaxSize)
             {
                 state->splitterArrayMaxSize *= 2;
-                state->splitterArray = (splitLine_t **)(realloc(state->splitterArray, 
+                state->splitterArray = (splitLine_t **)(realloc(state->splitterArray,
                                                                 state->splitterArrayMaxSize * sizeof(splitLine_t *)));
             }
             state->splitterArray[count] = line;
@@ -1016,9 +1023,9 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
 void writeUnmappedClipped(splitLine_t * line, state_t * state)
 {
     // Check if we are outputting fasta or fastq.
-    if (state->unmappedFastq == -1) 
+    if (state->unmappedFastq == -1)
         state->unmappedFastq = (streq(line->fields[QUAL], "*") ? 0 : 1);
-    
+
     // Print the first line.
     char firstChar = (state->unmappedFastq) ? '@' : '>';
     if (isPaired(line)) fprintf(state->unmappedClippedFile, "%c%s_%d\n", firstChar, line->fields[QNAME], (isFirstRead(line) ? 1 : 2));
@@ -1090,7 +1097,7 @@ void printVersionString()
 
 void printUsageString()
 {
-    const char* useString = 
+    const char* useString =
         "Author: Greg Faust (gf4ea@virginia.edu)\n"
         "Tool to mark duplicates and optionally output split reads and/or discordant pairs.\n"
         "Input sam file must contain paired end data, contain sequence header and be sorted by read ids.\n"
@@ -1121,7 +1128,7 @@ void printUsageString()
         "   --minNonOverlap    INT Minimum non-overlaping base pairs between two alignments for a read to be included in splitter file. [20]\n"
         "   --minClipSize      INT Minumum number of bases a mapped read must be clipped to be included in unmapped file. [20]\n"
         "-q --quiet                Output fewer statistics.\n";
-    
+
         printVersionString();
         fprintf(stderr, useString);
 }
@@ -1326,7 +1333,7 @@ int main (int argc, char *argv[])
             writeLine(line, state->splitterFile);
         disposeSplitLines(line);
     }
-    
+
     // Make sure we have a header.
     if (count == 1 && !state->acceptDups)
     {
@@ -1384,16 +1391,16 @@ int main (int argc, char *argv[])
         if (state->unmappedClippedFile != NULL)
             fprintf(stderr, "samblaster: Output %lu unmapped/clipped reads to %s\n", unmapClipCount, state->unmappedClippedFileName);
     }
-    
+
     // Output stats.
     if (state->removeDups)
     {
-        fprintf(stderr, "samblaster: Removed %lu of %lu (%4.2f%%) read ids as duplicates", 
+        fprintf(stderr, "samblaster: Removed %lu of %lu (%4.2f%%) read ids as duplicates",
                 dupCount, idCount, ((double)100)*dupCount/idCount);
     }
     else
     {
-        fprintf(stderr, "samblaster: Marked %lu of %lu (%4.2f%%) read ids as duplicates", 
+        fprintf(stderr, "samblaster: Marked %lu of %lu (%4.2f%%) read ids as duplicates",
                 dupCount, idCount, ((double)100)*dupCount/idCount);
     }
     if ((TIMING == 0) || state->quiet)
@@ -1405,7 +1412,7 @@ int main (int argc, char *argv[])
 #if TIMING
         getrusage(RUSAGE_SELF, &usagebuf);
         time_t endTime = time(NULL);
-        struct timeval endRUTime = usagebuf.ru_utime;    
+        struct timeval endRUTime = usagebuf.ru_utime;
         fprintf(stderr, " using %luk memory in ", usagebuf.ru_maxrss);
         fprintTimeMicroSeconds(stderr, diffTVs(&startRUTime, &endRUTime), 3);
         fprintf(stderr, " CPU seconds and ");
