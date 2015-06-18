@@ -34,7 +34,7 @@ cp samblaster /usr/local/bin/.
 ##Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
-By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM file usually contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
+By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM files usually contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
 By default, the output SAM file will contain all the alignments in the same order as the input, with duplicates marked with SAM FLAG 0x400.  The **--removeDups** option will instead remove duplicate alignments from the output file.
 
 __<sup>1</sup>A read-id grouped__ SAM file is one in which all alignments for a read-id (QNAME) are grouped together in adjacent lines.
@@ -67,7 +67,7 @@ samtools view -h samp.bam | samblaster -a -e -d samp.disc.sam -s samp.split.sam 
 ---
 **OPTIONS:**
 Default values enclosed in square brackets []
-```
+<pre>
 Input/Output Options:
 -i --input           FILE Input sam file [stdin].
 -o --output          FILE Output sam file for all input alignments [stdout].
@@ -82,8 +82,8 @@ Other Options:
 -r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).
    --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.
    --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.
-                          <pre><b>--ignoreUnmated is not recommended for general use. It disables checks in <i>samblaster</i> that detect incorrectly sorted input.</b></pre>
--M                        Run in compatibility mode; both 0x100 and 0x800 are considered supplemental (chimeric). Similar to bwa mem -M option. See details below.
+                          <b>--ignoreUnmated is not recommended for general use. It disables checks that detect incorrectly sorted input.</b>
+-M                        Compatibility mode (details below); both FLAG 0x100 and 0x800 denote supplemental (chimeric). Similar to <i>bwa mem</i> <b>-M</b> option.
    --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]
    --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]
    --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]
@@ -93,7 +93,7 @@ Other Options:
 -h --help                 Print samblaster help to stderr.
 -q --quiet                Output fewer statistics.
    --version              Print samblaster version number to stderr.
-```
+</pre>
 
 ---
 **ALIGNMENT TYPE DEFINITIONS:<a name="Definitions"></a>**  
@@ -101,8 +101,8 @@ Below, we will use the following definitions for alignment types.
 Starting with *samblaster* release 0.1.22, these definitions are affected by the use of the **-M** option.
 By default, *samblaster* will use the current definitions of alignment types as specified in the [SAM Specification](http://samtools.sourceforge.net/SAMv1.pdf).
 Namely, alignments marked with FLAG 0x100 are considered *secondary*, while those marked with FLAG 0x800 are considered *supplemental*.
-If the **-M** option is specified, then both FLAG 0x100 and 0x800 are considered *supplemental*, and no alignments are considered *secondary*.
-In either case, a *primary* alignment is one that is neither *secondary* nor *supplemental*.
+If the **-M** option is specified, alignments marked with either FLAG 0x100 or 0x800 are considered *supplemental*, and no alignments are considered *secondary*.
+A *primary* alignment is always one that is neither *secondary* nor *supplemental*.
 Only *primary* and *supplemental* alignments are used to find chimeric (split-read) mappings.
 The **-M** flag is used for backward compatibility with older SAM/BAM files in which "chimeric" alignments were marked with FLAG 0x100, and should also be used with output from more recent runs of *bwa mem* using its **-M** option.
 
