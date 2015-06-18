@@ -532,6 +532,7 @@ struct state_struct
     bool           removeDups;
     bool           addMateTags;
     bool           compatMode;
+    bool           ignoreUnmated;
     bool           quiet;
 };
 typedef struct state_struct state_t;
@@ -560,6 +561,7 @@ state_t * makeState ()
     s->removeDups = false;
     s->addMateTags = false;
     s->compatMode = false;
+    s->ignoreUnmated = false;
     s->quiet = false;
     // Start this as -1 to indicate we don't know yet.
     // Once we are outputting our first line, we will decide.
@@ -782,6 +784,7 @@ UINT64 dupCount = 0;
 UINT64 discCount = 0;
 UINT64 splitCount = 0;
 UINT64 unmapClipCount = 0;
+UINT64 unmatedCount = 0;
 
 // This is the main workhorse that determines if lines are dups or not.
 template <bool excludeSecondaries>
@@ -805,18 +808,19 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         else if (isFirstRead(line))  first  = line;
         else if (isSecondRead(line)) second = line;
     }
+
     // Figure out what type of "pair" we have.
-    // First get rid of the useless case of having no first AND no second.
-    if (first == NULL && second == NULL) brokenBlock(block, count);
-    // Now see if we have orphan with the unmapped read missing.
     bool orphan = false;
     bool dummyFirst = false;
+    // First get rid of the useless case of having no first AND no second.
+    if (first == NULL && second == NULL) goto outOfHere;
+    // Now see if we have orphan with the unmapped read missing.
     if (first == NULL || second == NULL)
     {
         // Get the NULL one in the first slot.
         if (second == NULL) swapPtrs(&first, &second);
         // If the only read says its paired, and it is unmapped or its mate is mapped, something is wrong.
-        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) brokenBlock(block, count);
+        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) goto outOfHere;
         // If the only read we have is unmapped, then it can't be a dup.
         if (isUnmapped(second)) return;
         // Now MAKE a dummy record for the first read, but don't put it into the block.
@@ -926,6 +930,11 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         first->discordant = true;
         second->discordant = true;
     }
+    return;
+
+outOfHere:
+    if (state->ignoreUnmated) {unmatedCount += 1; return;}
+    else                       brokenBlock(block, count);
 }
 
 // Sort ascending in SQO.
@@ -975,6 +984,8 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
         if (state->unmappedClippedFile == NULL) return;
         // Process unmapped or clipped.
         splitLine_t * line = state->splitterArray[0];
+        // Unmapped or clipped alignments should be primary.
+        if (!isPrimaryAlignment(line)) return;
         if (isUnmapped(line))
         {
             line->unmappedClipped = true;
@@ -1136,12 +1147,13 @@ void processSAMBlock(splitLine_t * block, state_t * state)
 void printPGsamLine(FILE * f, state_t * s)
 {
     if (f == NULL) return;
-    fprintf(f, "@PG\tID:SAMBLASTER\tVN:0.1.%d.PRE.A\tCL:samblaster -i %s -o %s", BUILDNUM, s->inputFileName, s->outputFileName);
+    fprintf(f, "@PG\tID:SAMBLASTER\tVN:0.1.%d\tCL:samblaster -i %s -o %s", BUILDNUM, s->inputFileName, s->outputFileName);
     if (s->compatMode) fprintf(f, " -M");
     if (s->acceptDups) fprintf(f, " --acceptDupMarks");
     if (s->removeDups) fprintf(f, " --removeDups");
     else if (s->excludeDups && (s->discordantFile != NULL || s->splitterFile != NULL || s->unmappedClippedFile != NULL)) fprintf(f, " --excludeDups");
     if (s->addMateTags) fprintf(f, " --addMateTags");
+    if (s->ignoreUnmated) fprintf(f, " --ignoreUnmated");
     if (s->discordantFile != NULL) fprintf(f, " -d %s", s->discordantFileName);
     if (s->splitterFile != NULL)
         fprintf(f, " -s %s --maxSplitCount %d --maxUnmappedBases %d --minIndelSize %d --minNonOverlap %d",
@@ -1153,7 +1165,7 @@ void printPGsamLine(FILE * f, state_t * s)
 
 void printVersionString()
 {
-    fprintf(stderr, "samblaster: Version 0.1.%d.PRE.A\n", BUILDNUM);
+    fprintf(stderr, "samblaster: Version 0.1.%d\n", BUILDNUM);
 }
 
 void printUsageString()
@@ -1167,7 +1179,7 @@ void printUsageString()
         "Usage:\n"
         "For use as a post process on an aligner (eg. bwa mem):\n"
         "     bwa mem <idxbase> samp.r1.fq samp.r2.fq | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
-        "     bwa mem <idxbase> -M samp.r1.fq samp.r2.fq | samblaster -M [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
+        "     bwa mem -M <idxbase> samp.r1.fq samp.r2.fq | samblaster -M [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
         "For use with a pre-existing bam file to pull split, discordant and/or unmapped reads:\n"
         "     samtools view -h samp.bam | samblaster [-a] [-e] [-d samp.disc.sam] [-s samp.split.sam] [-u samp.umc.fasta] -o /dev/null\n\n"
 
@@ -1184,6 +1196,7 @@ void printUsageString()
         "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).\n"
         "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
+        "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.\n"
         "-M                        Run in compatibility mode; both 0x100 and 0x800 are considered chimeric. Similar to BWA MEM -M option.\n"
         "   --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]\n"
         "   --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]\n"
@@ -1251,6 +1264,10 @@ int main (int argc, char *argv[])
         else if (streq(argv[argi],"--addMateTags"))
         {
             state->addMateTags = true;
+        }
+        else if (streq(argv[argi],"--ignoreUnmated"))
+        {
+            state->ignoreUnmated = true;
         }
         else if (streq(argv[argi],"-M"))
         {
@@ -1476,6 +1493,12 @@ int main (int argc, char *argv[])
     }
 
     // Output stats.
+    if (state->ignoreUnmated)
+    {
+        fprintf(stderr, "samblaster: Found %"PRIu64" of %"PRIu64" (%4.2f%%) read ids unmated\n",
+                unmatedCount, idCount, ((double)100)*unmatedCount/idCount);
+        if (unmatedCount > 0) fprintf(stderr, "samblaster: Please double check that input file is read-id (QNAME) grouped\n");
+    }
     if (state->removeDups)
     {
         fprintf(stderr, "samblaster: Removed %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates",
