@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013,2014 Gregory G. Faust
+    Copyright 2013-2015 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ struct LBMallocBlock
 char * pushNewLBMallocBlock(int blockSize, LBMallocBlock_t **blockArrayPtr)
 {
     char * newBlock = blockMalloc(blockSize);
-    LBMallocBlock_t * newMallocBlock = (LBMallocBlock_t *)malloc(sizeof(LBMallocBlock_t));    
+    LBMallocBlock_t * newMallocBlock = (LBMallocBlock_t *)malloc(sizeof(LBMallocBlock_t));
     if (newMallocBlock == NULL) fatalError("samblaster: Insufficeint memory available to allocate (more) objects.");
     newMallocBlock->size = blockSize;
     newMallocBlock->block = newBlock;
@@ -177,7 +177,7 @@ inline bool isValue(UINT64 value)
 }
 
 #define numOfSizes 27
-static UINT32 hashTableSizes [] = {0, 23, 47, 97, 199, 409, 823, 1741, 3739, 7517, 15173, 30727, 62233, 126271, 256279, 520241, 1056323, 
+static UINT32 hashTableSizes [] = {0, 23, 47, 97, 199, 409, 823, 1741, 3739, 7517, 15173, 30727, 62233, 126271, 256279, 520241, 1056323,
                                    2144977, 4355707, 8844859, 17961079, 36473443, 74066549, 150406843, 305431229, 620239453, 1259520799};
 
 inline UINT32 hash(UINT64 value)
@@ -189,7 +189,7 @@ void hashTableInit(hashTable_t * ht, int size)
 {
     ht->entries = 0;
     ht->size = size;
-    if (size == 0) 
+    if (size == 0)
     {
         ht->table = (UINT64 *)NULL;
         return;
@@ -212,13 +212,19 @@ hashTable::~hashTable()
     if (table != NULL) free(table);
 }
 
+// C style delete.
+void deleteHashTable(hashTable_t * ht)
+{
+    if (ht->table != NULL) free(ht->table);
+}
+
 void resizeHashTable(hashTable_t * ht)
 {
     // Find out what size table is next.
     int newsize = 0;
-    for (int i=0; i<numOfSizes; i++) 
+    for (int i=0; i<numOfSizes; i++)
     {
-        if (hashTableSizes[i] == ht->size) 
+        if (hashTableSizes[i] == ht->size)
         {
             newsize = hashTableSizes[i+1];
             break;

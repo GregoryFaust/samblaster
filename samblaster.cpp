@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013,2014 Gregory G. Faust
+    Copyright 2013-2015 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
@@ -264,6 +264,24 @@ void unsplitSplitLine(splitLine_t * line)
     line->split = false;
 }
 
+// Resize the buffer of a splitLine.
+// Since the new buffer may not be in the same place, we need to first unsplit, resize, then resplit.
+void resizeSplitLine(splitLine_t * line, int newsize)
+{
+    // First unsplit it.
+    unsplitSplitLine(line);
+    // Resize the buffer, giving a little extra room.
+    line->maxBufLen = newsize + 50;
+    line->buffer = (char *)realloc(line->buffer, line->maxBufLen);
+    if (line->buffer == NULL)
+    {
+        fatalError("samblaster: Failed to reallocate to a larger read buffer size.\n");
+    }
+    // Now resplit the line.
+    splitSplitLine(line, line->numFields);
+}
+
+
 // Change a field into a value.
 // This will be tough given how we output lines.
 // So, we might have to try a few things.
@@ -282,9 +300,10 @@ void changeFieldSplitLine(splitLine_t * line, int fnum, char * newValue)
         // This should never happen, but to be robust we need to check.
         // It is messy to fix it, as all the field ptrs will now be wrong.
         // For now, punt.
-        if ((size_t)(line->bufLen + move) > line->maxBufLen)
+        if ((size_t)(line->bufLen + move) >= line->maxBufLen)
         {
-            fatalError("samblaster: New buffer length exceeds maximum while changing field value.\n");
+            resizeSplitLine(line, line->bufLen + move);
+            fp = line->fields[fnum];
         }
         // Calculate the size of the tail that is still needed.
         int distance = 1 + line->bufLen - (fp - line->buffer) - oldLen;
@@ -304,18 +323,20 @@ void addTag(splitLine_t * line, const char * header, const char * val)
     int hl = strlen(header);
     int vl = strlen(val);
     // Make sure everything will fit.
-    char * ptr = line->buffer + line->bufLen - 1;
-    line->bufLen += hl + vl;
-    if ((size_t)line->bufLen > line->maxBufLen)
+    int newlen = line->bufLen + hl + vl;
+    if ((size_t)newlen >= line->maxBufLen)
     {
-        fatalError("samblaster: New buffer length exceeds maximum while adding Mate tags.\n");
+        resizeSplitLine(line, newlen);
     }
     // Copy over the header and the value.
+    char * ptr = line->buffer + line->bufLen - 1;
     ptr = (char *)mempcpy(ptr, header, hl);
     ptr = (char *)mempcpy(ptr, val, vl);
     // Add the null terminator for the field, and for the record.
     ptr[0] = 0;
     ptr[1] = 0;
+    // Fix the buffer length.
+    line->bufLen = newlen;
 }
 
 
@@ -369,9 +390,9 @@ inline void writeLine(splitLine_t * line, FILE * output)
 
 
 // Define SAM flag accessors.
-#define MULTI_SEGS 0x1
-#define FIRST_SEG  0x40
-#define SECOND_SEG 0x80
+#define MULTI_SEGS     0x1
+#define FIRST_SEG      0x40
+#define SECOND_SEG     0x80
 inline bool checkFlag(splitLine_t * line, int bits) { return ((line->flag & bits) != 0); }
 
 inline void setFlag(splitLine_t * line, int bits) { line->flag |= bits; }
@@ -398,8 +419,21 @@ inline bool isFirstRead(splitLine_t * line) { return checkFlag(line, FIRST_SEG);
 
 inline bool isSecondRead(splitLine_t * line) { return checkFlag(line, SECOND_SEG); }
 
+// These determine alignment type.
+// Things may get more complicated than this once we have alternate contigs such as in build 38 of human genome.
+inline bool isPrimaryAlignment(splitLine_t * line)
+{ return !(checkFlag(line, 0x100) || checkFlag(line, 0x800)); }
+
+// We have to hande secondard and complementary alignments differently depending on compatMode.
+// So, we store which bits are being included in each.
+
+int complementaryBits = 0x800;
+inline bool isComplementaryAlignment(splitLine_t * line)
+{ return checkFlag(line, complementaryBits); }
+
+int secondaryBits = 0x100;
 inline bool isSecondaryAlignment(splitLine_t * line)
-{ return (checkFlag(line, 0x100) || checkFlag(line, 0x800)); }
+{ return checkFlag(line, secondaryBits); }
 
 inline bool isDuplicate(splitLine_t * line) { return checkFlag(line, 0x400); }
 
@@ -486,7 +520,7 @@ struct state_struct
     seqMap_t       seqs;
     splitLine_t ** splitterArray;
     int            splitterArrayMaxSize;
-    int            sigArraySize;
+    UINT32         sigArraySize;
     int            minNonOverlap;
     int            maxSplitCount;
     int            minIndelSize;
@@ -497,6 +531,8 @@ struct state_struct
     bool           excludeDups;
     bool           removeDups;
     bool           addMateTags;
+    bool           compatMode;
+    bool           ignoreUnmated;
     bool           quiet;
 };
 typedef struct state_struct state_t;
@@ -524,6 +560,8 @@ state_t * makeState ()
     s->excludeDups = false;
     s->removeDups = false;
     s->addMateTags = false;
+    s->compatMode = false;
+    s->ignoreUnmated = false;
     s->quiet = false;
     // Start this as -1 to indicate we don't know yet.
     // Once we are outputting our first line, we will decide.
@@ -537,7 +575,12 @@ state_t * makeState ()
 void deleteState(state_t * s)
 {
     free(s->splitterArray);
-    if (s->sigs != NULL) delete[] s->sigs;
+    if (s->sigs != NULL)
+    {
+        // delete[] s->sigs;
+        for (UINT32 i=0; i<s->sigArraySize; i++) deleteHashTable(&(s->sigs[i]));
+        free (s->sigs);
+    }
     for (seqMap_t::iterator iter = s->seqs.begin(); iter != s->seqs.end(); ++iter)
     {
         free((char *)(iter->first));
@@ -559,11 +602,11 @@ inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
     return (sgn_t)final;
 }
 
-inline int calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & seqs)
+inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & seqs)
 {
-    int s1 = (first->seqNum * 2) + (isReverseStrand(first) ? 1 : 0);
-    int s2 = (second->seqNum * 2) + (isReverseStrand(second) ? 1 : 0);
-    int retval = (s1 * seqs.size() * 2) + s2;
+    UINT32 s1 = (first->seqNum * 2) + (isReverseStrand(first) ? 1 : 0);
+    UINT32 s2 = (second->seqNum * 2) + (isReverseStrand(second) ? 1 : 0);
+    UINT32 retval = (s1 * seqs.size() * 2) + s2;
 #ifdef DEBUG
     fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %lu result %d\n",
             first->seqNum, isReverseStrand(first), s1, second->seqNum, isReverseStrand(second), s2, seqs.size(), retval);
@@ -638,13 +681,14 @@ void calcOffsets(splitLine_t * line)
         {
             line->raLen += opLen;
             line->qaLen += opLen;
+            first = false;
         }
         else if (opCode == 'S' || opCode == 'H')
         {
-            if (first) line->sclip = opLen;
-            else       line->eclip = opLen;
+            if (first) line->sclip += opLen;
+            else       line->eclip += opLen;
         }
-        else if (opCode == 'D')
+        else if (opCode == 'D' || opCode == 'N')
         {
             line->raLen += opLen;
         }
@@ -656,7 +700,6 @@ void calcOffsets(splitLine_t * line)
         {
             fprintf(stderr, "Unknown opcode '%c' in CIGAR string: '%s'\n", opCode, line->fields[CIGAR]);
         }
-        first = false;
     }
     line->rapos = str2pos(line->fields[POS]);
     if (isForwardStrand(line))
@@ -741,8 +784,10 @@ UINT64 dupCount = 0;
 UINT64 discCount = 0;
 UINT64 splitCount = 0;
 UINT64 unmapClipCount = 0;
+UINT64 unmatedCount = 0;
 
 // This is the main workhorse that determines if lines are dups or not.
+template <bool excludeSecondaries>
 int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagValue);
 void markDupsDiscordants(splitLine_t * block, state_t * state)
 {
@@ -754,8 +799,8 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         count += 1;
         // Do this conversion once and store the result.
         line->flag = str2int(line->fields[FLAG]);
-        // We don't make our duplicate decisions based on secondaries.
-        if (isSecondaryAlignment(line)) continue;
+        // We make our duplicate decisions based solely on primary alignments.
+        if (!isPrimaryAlignment(line)) continue;
         // Allow unpaired reads to go through (as the second so that signature is correct).
         // According to the SAM spec, this must be checked first.
         if (!isPaired(line)) second = line;
@@ -763,18 +808,19 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         else if (isFirstRead(line))  first  = line;
         else if (isSecondRead(line)) second = line;
     }
+
     // Figure out what type of "pair" we have.
-    // First get rid of the useless case of having no first AND no second.
-    if (first == NULL && second == NULL) brokenBlock(block, count);
-    // Now see if we have orphan with the unmapped read missing.
     bool orphan = false;
     bool dummyFirst = false;
+    // First get rid of the useless case of having no first AND no second.
+    if (first == NULL && second == NULL) goto outOfHere;
+    // Now see if we have orphan with the unmapped read missing.
     if (first == NULL || second == NULL)
     {
         // Get the NULL one in the first slot.
         if (second == NULL) swapPtrs(&first, &second);
         // If the only read says its paired, and it is unmapped or its mate is mapped, something is wrong.
-        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) brokenBlock(block, count);
+        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) goto outOfHere;
         // If the only read we have is unmapped, then it can't be a dup.
         if (isUnmapped(second)) return;
         // Now MAKE a dummy record for the first read, but don't put it into the block.
@@ -795,7 +841,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             int mask = (FIRST_SEG | SECOND_SEG);
             // Process the first of the pair.
             // Get the list of reads that match the second of the pair.
-            int count = fillSplitterArray(block, state, second->flag & mask, true);
+            int count = fillSplitterArray<false>(block, state, second->flag & mask, true);
             for (int i=0; i<count; ++i)
             {
                 splitLine_t * line = state->splitterArray[i];
@@ -804,7 +850,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             }
             // Process the second of the pair.
             // Get the list of reads that match the first of the pair.
-            count = fillSplitterArray(block, state, first->flag & mask, true);
+            count = fillSplitterArray<false>(block, state, first->flag & mask, true);
             for (int i=0; i<count; ++i)
             {
                 splitLine_t * line = state->splitterArray[i];
@@ -854,7 +900,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         // Now find the signature of the pair.
         sgn_t sig = calcSig(first, second);
         // Calculate the offset into the signatures array.
-        int off = calcSigArrOff(first, second, state->seqs);
+        UINT32 off = calcSigArrOff(first, second, state->seqs);
         // Attempt insert into the sigs structure.
         // The return value will tell us if it was already there.
         bool insert = hashTableInsert(&(state->sigs[off]), sig);
@@ -884,6 +930,11 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         first->discordant = true;
         second->discordant = true;
     }
+    return;
+
+outOfHere:
+    if (state->ignoreUnmated) {unmatedCount += 1; return;}
+    else                       brokenBlock(block, count);
 }
 
 // Sort ascending in SQO.
@@ -894,6 +945,7 @@ int compQOs(const void * p1, const void * p2)
     return (l1->SQO - l2->SQO);
 }
 
+template <bool excludeSecondaries>
 int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagValue)
 {
     // Count the secondaries we have for this read (if any), and store their ptrs into an array.
@@ -901,7 +953,8 @@ int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagV
     for (splitLine_t * line = block; line != NULL; line = line->next)
     {
         // For all the ones that are the current read of interest....
-        if (checkFlag(line, mask) == flagValue)
+        // Check if they are a primary or complementary alignment.
+        if (checkFlag(line, mask) == flagValue && !(excludeSecondaries && isSecondaryAlignment(line)))
         {
             // Add the ptr to this line to the sort array.
             // If it won't fit, double the array size.
@@ -921,7 +974,7 @@ int fillSplitterArray(splitLine_t * block, state_t * state, int mask, bool flagV
 void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask, bool flagValue)
 {
     // Count the secondaries we have for this read (if any), and store their ptrs into an array.
-    int count = fillSplitterArray(block, state, mask, flagValue);
+    int count = fillSplitterArray<true>(block, state, mask, flagValue);
 
     // We have the lines of interest in an array.
     // Decide what to do next based on the number of reads.
@@ -931,6 +984,8 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
         if (state->unmappedClippedFile == NULL) return;
         // Process unmapped or clipped.
         splitLine_t * line = state->splitterArray[0];
+        // Unmapped or clipped alignments should be primary.
+        if (!isPrimaryAlignment(line)) return;
         if (isUnmapped(line))
         {
             line->unmappedClipped = true;
@@ -950,16 +1005,13 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
 
     // See if we need to process for splitters.
     if (state->splitterFile == NULL || count > state->maxSplitCount) return;
+
     // Calculate the query positions (for sorting) and do other preprocessing.
     for (int i=0; i<count; i++)
     {
         splitLine_t * line = state->splitterArray[i];
-        // If it is not a secondary.
-        if (!isSecondaryAlignment(line))
-        {
-            // Make sure the primary is mapped!
-            if (isUnmapped(line)) return;
-        }
+        // Make sure the primary is mapped!
+        if (isPrimaryAlignment(line) && isUnmapped(line)) return;
         calcOffsets(line);
     }
 
@@ -1092,6 +1144,25 @@ void processSAMBlock(splitLine_t * block, state_t * state)
 // Main Routine with helpers.
 ///////////////////////////////////////////////////////////////////////////////
 
+void printPGsamLine(FILE * f, state_t * s)
+{
+    if (f == NULL) return;
+    fprintf(f, "@PG\tID:SAMBLASTER\tVN:0.1.%d\tCL:samblaster -i %s -o %s", BUILDNUM, s->inputFileName, s->outputFileName);
+    if (s->compatMode) fprintf(f, " -M");
+    if (s->acceptDups) fprintf(f, " --acceptDupMarks");
+    if (s->removeDups) fprintf(f, " --removeDups");
+    else if (s->excludeDups && (s->discordantFile != NULL || s->splitterFile != NULL || s->unmappedClippedFile != NULL)) fprintf(f, " --excludeDups");
+    if (s->addMateTags) fprintf(f, " --addMateTags");
+    if (s->ignoreUnmated) fprintf(f, " --ignoreUnmated");
+    if (s->discordantFile != NULL) fprintf(f, " -d %s", s->discordantFileName);
+    if (s->splitterFile != NULL)
+        fprintf(f, " -s %s --maxSplitCount %d --maxUnmappedBases %d --minIndelSize %d --minNonOverlap %d",
+                s->splitterFileName, s->maxSplitCount, s->maxUnmappedBases, s->minIndelSize, s->minNonOverlap);
+    if (s->unmappedClippedFile != NULL)
+        fprintf(f, " -u %s --minClipSize %d", s->unmappedClippedFileName, s->minClip);
+    fprintf(f, "\n");
+}
+
 void printVersionString()
 {
     fprintf(stderr, "samblaster: Version 0.1.%d\n", BUILDNUM);
@@ -1107,7 +1178,8 @@ void printUsageString()
 
         "Usage:\n"
         "For use as a post process on an aligner (eg. bwa mem):\n"
-        "     bwa mem index samp.r1.fq samp.r2.fq | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
+        "     bwa mem <idxbase> samp.r1.fq samp.r2.fq | samblaster [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
+        "     bwa mem -M <idxbase> samp.r1.fq samp.r2.fq | samblaster -M [-e] [-d samp.disc.sam] [-s samp.split.sam] | samtools view -Sb - > samp.out.bam\n"
         "For use with a pre-existing bam file to pull split, discordant and/or unmapped reads:\n"
         "     samtools view -h samp.bam | samblaster [-a] [-e] [-d samp.disc.sam] [-s samp.split.sam] [-u samp.umc.fasta] -o /dev/null\n\n"
 
@@ -1124,6 +1196,8 @@ void printUsageString()
         "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).\n"
         "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
+        "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.\n"
+        "-M                        Run in compatibility mode; both 0x100 and 0x800 are considered chimeric. Similar to BWA MEM -M option.\n"
         "   --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]\n"
         "   --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]\n"
         "   --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]\n"
@@ -1190,6 +1264,18 @@ int main (int argc, char *argv[])
         else if (streq(argv[argi],"--addMateTags"))
         {
             state->addMateTags = true;
+        }
+        else if (streq(argv[argi],"--ignoreUnmated"))
+        {
+            state->ignoreUnmated = true;
+        }
+        else if (streq(argv[argi],"-M"))
+        {
+            state->compatMode = true;
+            // In compatibility mode, both 0x100 and 0x800 are considered chimeric and can be used as splitters.
+            // None will be secondary.
+            complementaryBits = (0x100 | 0x800);
+            secondaryBits = 0;
         }
         else if (streq(argv[argi],"--maxSplitCount"))
         {
@@ -1336,6 +1422,10 @@ int main (int argc, char *argv[])
             writeLine(line, state->splitterFile);
         disposeSplitLines(line);
     }
+    // Output the @PG header lines.
+    printPGsamLine(state->outputFile, state);
+    printPGsamLine(state->discordantFile, state);
+    printPGsamLine(state->splitterFile, state);
 
     // Make sure we have a header.
     if (count == 1 && !state->acceptDups)
@@ -1352,9 +1442,16 @@ int main (int argc, char *argv[])
     // We can now calculate the size of the signatures array, and intialize it.
     if (!state->acceptDups)
     {
+        // Make sure we can handle the number of sequences.
+        if (count >= (1 << 15))
+        {
+            fatalError("samblaster: Too many sequences in header of input sam file.  Exiting.\n");
+        }
+
         state->sigArraySize = count * count * 4;
-        state->sigs = new sigSet_t[state->sigArraySize];
-        for (int i=0; i<state->sigArraySize; i++) hashTableInit(&(state->sigs[i]));
+        state->sigs = (sigSet_t *) malloc(state->sigArraySize * sizeof(sigSet_t));
+        if (state->sigs == NULL) fatalError("samblaster: Unable to allocate signature set array.");
+        for (UINT32 i=0; i<state->sigArraySize; i++) hashTableInit(&(state->sigs[i]));
     }
 
     // Now start processing the alignment records.
@@ -1396,6 +1493,12 @@ int main (int argc, char *argv[])
     }
 
     // Output stats.
+    if (state->ignoreUnmated)
+    {
+        fprintf(stderr, "samblaster: Found %"PRIu64" of %"PRIu64" (%4.2f%%) read ids unmated\n",
+                unmatedCount, idCount, ((double)100)*unmatedCount/idCount);
+        if (unmatedCount > 0) fprintf(stderr, "samblaster: Please double check that input file is read-id (QNAME) grouped\n");
+    }
     if (state->removeDups)
     {
         fprintf(stderr, "samblaster: Removed %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates",

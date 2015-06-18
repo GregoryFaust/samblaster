@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013,2014 Gregory G. Faust
+    Copyright 2013-2015 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ struct hashTable
 };
 
 hashTable_t * makeHashTable();
-void deleteHashTable();
+void deleteHashTable(hashTable_t * ht);
 bool hashTableInsert(hashTable_t * ht, UINT64 value);
 void hashTableInit(hashTable_t * ht, int size=0);
 void freeHashTableNodes();
