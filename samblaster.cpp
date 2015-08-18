@@ -516,6 +516,8 @@ struct state_struct
     char *         splitterFileName;
     FILE *         unmappedClippedFile;
     char *         unmappedClippedFileName;
+    char *         metricsFileName;
+    FILE *         metricsFile;
     sigSet_t *     sigs;
     seqMap_t       seqs;
     splitLine_t ** splitterArray;
@@ -550,6 +552,8 @@ state_t * makeState ()
     s->splitterFileName = (char *)"";
     s->unmappedClippedFile = NULL;
     s->unmappedClippedFileName = (char *)"";
+    s->metricsFile = NULL;
+    s->metricsFileName = (char *)"";
     s->sigs = NULL;
     s->minNonOverlap = 20;
     s->maxSplitCount = 2;
@@ -1189,7 +1193,8 @@ void printUsageString()
         "-d --discordantFile  FILE Output discordant read pairs to this file. [no discordant file output]\n"
         "-s --splitterFile    FILE Output split reads to this file abiding by paramaters below. [no splitter file output]\n"
         "-u --unmappedFile    FILE Output unmapped/clipped reads as FASTQ to this file abiding by parameters below. [no unmapped file output].\n"
-        "                          Requires soft clipping in input file.  Will output FASTQ if QUAL information available, otherwise FASTA.\n\n"
+        "                          Requires soft clipping in input file.  Will output FASTQ if QUAL information available, otherwise FASTA.\n"
+        "-m --metricsFile     FILE Output metrics to file. [no metrics file output].\n\n"
 
         "Other Options:\n"
         "-a --acceptDupMarks       Accept duplicate marks already in input file instead of looking for duplicates in the input.\n"
@@ -1325,6 +1330,11 @@ int main (int argc, char *argv[])
             argi++;
             state->unmappedClippedFileName = argv[argi];
         }
+        else if (streq(argv[argi], "-m") || streq(argv[argi],"--metricsFile"))
+        {
+            argi++;
+            state->metricsFileName = argv[argi];
+        }
         else
         {
             fprintf(stderr, "samblaster: Unrecognized option: %s\n", argv[argi]);
@@ -1390,6 +1400,12 @@ int main (int argc, char *argv[])
         if (!state->quiet) fprintf(stderr, "samblaster: Opening %s for write.\n", state->unmappedClippedFileName);
         state->unmappedClippedFile = fopen(state->unmappedClippedFileName, "w");
         if (state->unmappedClippedFile == NULL) fsError(state->unmappedClippedFileName);
+    }
+    if (!streq(state->metricsFileName, ""))
+    {
+        if (!state->quiet) fprintf(stderr, "samblaster: Opening %s for write.\n", state->metricsFileName);
+        state->metricsFile = fopen(state->metricsFileName, "w");
+        if (state->metricsFile == NULL) fsError(state->metricsFileName);
     }
 
     // Read in the SAM header and create the seqs structure.
@@ -1526,6 +1542,12 @@ int main (int argc, char *argv[])
         fprintf(stderr, " wall time.\n");
 #endif
     }
+    if (state->metricsFile != NULL){
+        fprintf(state->metricsFile, "TOTAL_READS\tDISCORDANT_READ_PAIRS\tSPLIT_READS\tUNMAPPED_READS\tUNMATED_READS\tDUPLICATE_READS\tPCT_DUPLICATE_READS\n");
+        //fprintf(state->metricsFile, "%"PRIu64"\n", idCount);
+        fprintf(state->metricsFile, "%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%"PRIu64"\t%4.2f\n",
+                idCount, discCount/2, splitCount, unmapClipCount, unmatedCount, dupCount, ((double)100)*dupCount/idCount);
+    }
 
     // Close files.
     if (!streq(state->inputFileName, "stdin")) fclose(state->inputFile);
@@ -1533,7 +1555,8 @@ int main (int argc, char *argv[])
     if (state->discordantFile != NULL) fclose(state->discordantFile);
     if (state->splitterFile != NULL) fclose(state->splitterFile);
     if (state->unmappedClippedFile != NULL) fclose(state->unmappedClippedFile);
-
+    if (state->metricsFile != NULL) fclose(state->metricsFile);
+    
     // Clean up the heap.
     cleanUpSplitLines();
     deleteState(state);
