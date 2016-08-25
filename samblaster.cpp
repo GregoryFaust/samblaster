@@ -841,21 +841,25 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             int mask = (FIRST_SEG | SECOND_SEG);
             // Process the first of the pair.
             // Get the list of reads that match the second of the pair.
-            int count = fillSplitterArray<false>(block, state, second->flag & mask, true);
-            for (int i=0; i<count; ++i)
-            {
-                splitLine_t * line = state->splitterArray[i];
-                addTag(line, "	MC:Z:", first->fields[CIGAR]);
-                addTag(line, "	MQ:i:", first->fields[MAPQ]);
+            if (isMapped(first)) {
+                int count = fillSplitterArray<false>(block, state, second->flag & mask, true);
+                for (int i=0; i<count; ++i)
+                {
+                    splitLine_t * line = state->splitterArray[i];
+                    addTag(line, "	MC:Z:", first->fields[CIGAR]);
+                    addTag(line, "	MQ:i:", first->fields[MAPQ]);
+                }
             }
             // Process the second of the pair.
             // Get the list of reads that match the first of the pair.
-            count = fillSplitterArray<false>(block, state, first->flag & mask, true);
-            for (int i=0; i<count; ++i)
-            {
-                splitLine_t * line = state->splitterArray[i];
-                addTag(line, "	MC:Z:", second->fields[CIGAR]);
-                addTag(line, "	MQ:i:", second->fields[MAPQ]);
+            if (isMapped(second)) {
+                count = fillSplitterArray<false>(block, state, first->flag & mask, true);
+                for (int i=0; i<count; ++i)
+                {
+                    splitLine_t * line = state->splitterArray[i];
+                    addTag(line, "	MC:Z:", second->fields[CIGAR]);
+                    addTag(line, "	MQ:i:", second->fields[MAPQ]);
+                }
             }
         }
 
