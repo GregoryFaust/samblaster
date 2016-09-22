@@ -372,6 +372,34 @@ inline void writeLine(splitLine_t * line, FILE * output)
     outputString(line->buffer, output);
 }
 
+// Check the first line of a file (e.g. input) for bam signature.
+void checkBAMfile(splitLine_t * line)
+{
+    // If the file is a bam file, we can't rely on fields.
+    // So, look at the underlying buffer for the line.
+
+    // First define the signature to look for.
+    int values[] = {31, -117, 8, 4, 66, 67,  2};
+    int offsets[] = {0,    1, 2, 3, 12, 13, 14};
+    int count = 7;
+
+    // Check for empty file or likely a sam file with a header.
+    // This is necessary, as the @HD line may not be long enough to check for the BAM signature.
+    if (line == NULL) fatalError("samblaster: Input file is empty. Exiting.\n");
+    if (line->buffer[0] == '@') return;
+
+    // If a SAM file has no header, an alignment row should easily be long enough.
+    if (line->bufLen <= offsets[count-1]) fatalError("samblaster: Input file is empty. Exiting.\n");
+    // Check for the BAM signature.
+    for (int i=0; i<count; i++)
+    {
+        if ((int)line->buffer[offsets[i]] != values[i]) return;
+    }
+
+    // If we are here, we almost certainly have a bamfile.
+    fatalError("samblaster: Input file appears to be in BAM format. SAM input is required. Exiting.\n");
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SAM and signature set related structures.
 ///////////////////////////////////////////////////////////////////////////////
@@ -1429,11 +1457,11 @@ int main (int argc, char *argv[])
     int count = 1;
     UINT64 totalLen = 0;
     splitLine_t * line;
-    while (true)
+    // Read the first line to prime the loop, and also to allow checking for malformed input.
+    line = readLine(state->inputFile);
+    checkBAMfile(line);
+    while (line != NULL && line->fields[0][0] == '@')
     {
-        line = readLine(state->inputFile);
-        // Check if we have exhausted the header.
-        if (line == NULL || line->fields[0][0] != '@') break;
         // Process input line to see if it defines a sequence.
         if (streq(line->fields[0], "@SQ"))
         {
@@ -1479,6 +1507,9 @@ int main (int argc, char *argv[])
         if (state->splitterFile != NULL)
             writeLine(line, state->splitterFile);
         disposeSplitLines(line);
+
+        // Read in next line.
+        line = readLine(state->inputFile);
     }
 
     // Output the @PG header lines.
