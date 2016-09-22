@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013-2015 Gregory G. Faust
+    Copyright 2013-2016 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
