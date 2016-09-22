@@ -1,4 +1,4 @@
-/* -*- Mode: C++ ; indent-tabs-mode: nil ; c-file-style: "stroustrup" -*-
+/* -*- mode: C++ ; indent-tabs-mode: nil ; c-file-style: "stroustrup" -*-
 
     Project: samblaster
              Fast mark duplicates in read-ID grouped SAM file.
@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013-2015 Gregory G. Faust
+    Copyright 2013-2016 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
@@ -121,7 +121,7 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 //     and also so that we can keep a freelist of them.
 
 // We need to pre-define these for the SAM specific fields.
-typedef UINT32 pos_t; // Type for reference offsets.
+typedef UINT32 pos_t; // Type for reference offsets (pos can be negative w/ softclips, but still works fine as unsigned rollover).
 typedef UINT64 sgn_t; // Type for signatures for offsets and lengths.
 // And the type itself for the next pointer.
 typedef struct splitLine splitLine_t;
@@ -142,6 +142,8 @@ struct splitLine
     int   flag;
     pos_t pos;
     int   seqNum;
+    pos_t binPos;
+    int   binNum;
     int   SQO;
     int   EQO;
     int   sclip;
@@ -370,6 +372,34 @@ inline void writeLine(splitLine_t * line, FILE * output)
     outputString(line->buffer, output);
 }
 
+// Check the first line of a file (e.g. input) for bam signature.
+void checkBAMfile(splitLine_t * line)
+{
+    // If the file is a bam file, we can't rely on fields.
+    // So, look at the underlying buffer for the line.
+
+    // First define the signature to look for.
+    int values[] = {31, -117, 8, 4, 66, 67,  2};
+    int offsets[] = {0,    1, 2, 3, 12, 13, 14};
+    int count = 7;
+
+    // Check for empty file or likely a sam file with a header.
+    // This is necessary, as the @HD line may not be long enough to check for the BAM signature.
+    if (line == NULL) fatalError("samblaster: Input file is empty. Exiting.\n");
+    if (line->buffer[0] == '@') return;
+
+    // If a SAM file has no header, an alignment row should easily be long enough.
+    if (line->bufLen <= offsets[count-1]) fatalError("samblaster: Input file is empty. Exiting.\n");
+    // Check for the BAM signature.
+    for (int i=0; i<count; i++)
+    {
+        if ((int)line->buffer[offsets[i]] != values[i]) return;
+    }
+
+    // If we are here, we almost certainly have a bamfile.
+    fatalError("samblaster: Input file appears to be in BAM format. SAM input is required. Exiting.\n");
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // SAM and signature set related structures.
 ///////////////////////////////////////////////////////////////////////////////
@@ -518,9 +548,12 @@ struct state_struct
     char *         unmappedClippedFileName;
     sigSet_t *     sigs;
     seqMap_t       seqs;
+    UINT32 *       seqLens;
+    UINT64 *       seqOffs;
     splitLine_t ** splitterArray;
     int            splitterArrayMaxSize;
     UINT32         sigArraySize;
+    int            binCount;
     int            minNonOverlap;
     int            maxSplitCount;
     int            minIndelSize;
@@ -585,6 +618,8 @@ void deleteState(state_t * s)
     {
         free((char *)(iter->first));
     }
+    if (s->seqLens != NULL) free(s->seqLens);
+    if (s->seqOffs != NULL) free(s->seqOffs);
     delete s;
 }
 
@@ -592,24 +627,29 @@ void deleteState(state_t * s)
 ///////////////////////////////////////////////////////////////////////////////
 // Signatures
 ///////////////////////////////////////////////////////////////////////////////
-
+// We now calculate signatures as offsets into a super contig that includes the entire genome.
+// And partition it into equaly sized bins.
+// This performs better on genomes with large numbers of small contigs,
+//  without performance degradation on more standard genomes.
+// Thanks to https://github.com/carsonhh for the suggestion.
+/////////////////////////////////////////////////////////////////////////////
 inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
 {
     // Total nonsense to get the compiler to actually work.
-    UINT64 t1 = first->pos;
+    UINT64 t1 = first->binPos;
     UINT64 t2 = t1 << 32;
-    UINT64 final = t2 | second->pos;
+    UINT64 final = t2 | second->binPos;
     return (sgn_t)final;
 }
 
-inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, seqMap_t & seqs)
+inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, int binCount)
 {
-    UINT32 s1 = (first->seqNum * 2) + (isReverseStrand(first) ? 1 : 0);
-    UINT32 s2 = (second->seqNum * 2) + (isReverseStrand(second) ? 1 : 0);
-    UINT32 retval = (s1 * seqs.size() * 2) + s2;
+    UINT32 s1 = (first->binNum * 2) + (isReverseStrand(first) ? 1 : 0);
+    UINT32 s2 = (second->binNum * 2) + (isReverseStrand(second) ? 1 : 0);
+    UINT32 retval = (s1 * binCount * 2) + s2;
 #ifdef DEBUG
     fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %lu result %d\n",
-            first->seqNum, isReverseStrand(first), s1, second->seqNum, isReverseStrand(second), s2, seqs.size(), retval);
+            first->binNum, isReverseStrand(first), s1, second->binNum, isReverseStrand(second), s2, binCount, retval);
 #endif
     return retval;
 }
@@ -737,6 +777,8 @@ inline int getEndDiag(splitLine_t * line)
 ///////////////////////////////////////////////////////////////////////////////
 // Process SAM Blocks
 ///////////////////////////////////////////////////////////////////////////////
+#define BIN_SHIFT 27 //bin window is 27 bits wide
+#define BIN_MASK ((1 << 27)-1) //bin window is 27 bits wide
 
 // This is apparently no longer called.
 void outputSAMBlock(splitLine_t * block, FILE * output)
@@ -773,8 +815,9 @@ inline void swapPtrs(splitLine_t ** first, splitLine_t ** second)
 void brokenBlock(splitLine_t *block, int count)
 {
     char * temp;
-    asprintf(&temp, "samblaster: Can't find first and/or second of pair in sam block of length %d for id: %s\n%s\n",
-             count, block->fields[QNAME], "samblaster: Are you sure the input is sorted by read ids?");
+    asprintf(&temp, "samblaster: Can't find first and/or second of pair in sam block of length %d for id: %s\n%s%s:%s\n%s",
+             count, block->fields[QNAME], "samblaster:    At location: ", block->fields[RNAME], block->fields[POS],
+             "samblaster:    Are you sure the input is sorted by read ids?");
     fatalError(temp);
 }
 
@@ -841,21 +884,27 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             int mask = (FIRST_SEG | SECOND_SEG);
             // Process the first of the pair.
             // Get the list of reads that match the second of the pair.
-            int count = fillSplitterArray<false>(block, state, second->flag & mask, true);
-            for (int i=0; i<count; ++i)
+            if (isMapped(first))
             {
-                splitLine_t * line = state->splitterArray[i];
-                addTag(line, "	MC:Z:", first->fields[CIGAR]);
-                addTag(line, "	MQ:i:", first->fields[MAPQ]);
+                int count = fillSplitterArray<false>(block, state, second->flag & mask, true);
+                for (int i=0; i<count; ++i)
+                {
+                    splitLine_t * line = state->splitterArray[i];
+                    addTag(line, "	MC:Z:", first->fields[CIGAR]);
+                    addTag(line, "	MQ:i:", first->fields[MAPQ]);
+                }
             }
             // Process the second of the pair.
             // Get the list of reads that match the first of the pair.
-            count = fillSplitterArray<false>(block, state, first->flag & mask, true);
-            for (int i=0; i<count; ++i)
+            if (isMapped(second))
             {
-                splitLine_t * line = state->splitterArray[i];
-                addTag(line, "	MC:Z:", second->fields[CIGAR]);
-                addTag(line, "	MQ:i:", second->fields[MAPQ]);
+                count = fillSplitterArray<false>(block, state, first->flag & mask, true);
+                for (int i=0; i<count; ++i)
+                {
+                    splitLine_t * line = state->splitterArray[i];
+                    addTag(line, "	MC:Z:", second->fields[CIGAR]);
+                    addTag(line, "	MQ:i:", second->fields[MAPQ]);
+                }
             }
         }
 
@@ -878,17 +927,26 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         // Calculate and store the second position and sequence name.
         calcOffsets(second);
         second->seqNum = getSeqNum(second, RNAME, state);
+        UINT64 seqOff = state->seqOffs[second->seqNum]; //genome relative position
+        second->binNum = (seqOff + second->pos) >> BIN_SHIFT;
+        second->binPos = (seqOff + second->pos) &  BIN_MASK;
+
         if (orphan)
         {
             // We have an orphan, so we just zero out the pos and seqnum
             first->pos = 0;
             first->seqNum = 0;
+            first->binNum = 0;
+            first->binPos = 0;
         }
         else
         {
             // Not an orphan, so handle first on its own.
             calcOffsets(first);
             first->seqNum = getSeqNum(first, RNAME, state);
+            seqOff = state->seqOffs[first->seqNum]; //genome relative position
+            first->binNum = (seqOff + first->pos) >> BIN_SHIFT;
+            first->binPos = (seqOff + first->pos) &  BIN_MASK;
         }
 
         // The fact of which alignment is first or second in the template is not relevant for determining dups.
@@ -900,7 +958,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         // Now find the signature of the pair.
         sgn_t sig = calcSig(first, second);
         // Calculate the offset into the signatures array.
-        UINT32 off = calcSigArrOff(first, second, state->seqs);
+        UINT32 off = calcSigArrOff(first, second, state->binCount);
         // Attempt insert into the sigs structure.
         // The return value will tell us if it was already there.
         bool insert = hashTableInsert(&(state->sigs[off]), sig);
@@ -1136,6 +1194,7 @@ void processSAMBlock(splitLine_t * block, state_t * state)
             splitCount += 1;
         }
     }
+
     disposeSplitLines(block);
 }
 
@@ -1143,7 +1202,6 @@ void processSAMBlock(splitLine_t * block, state_t * state)
 ///////////////////////////////////////////////////////////////////////////////
 // Main Routine with helpers.
 ///////////////////////////////////////////////////////////////////////////////
-
 void printPGsamLine(FILE * f, state_t * s)
 {
     if (f == NULL) return;
@@ -1394,24 +1452,52 @@ int main (int argc, char *argv[])
 
     // Read in the SAM header and create the seqs structure.
     state->seqs[strdup("*")] = 0;
+    state->seqLens = (UINT32*)calloc(1, sizeof(UINT32)); //initialize to 0
+    state->seqOffs = (UINT64*)calloc(1, sizeof(UINT64)); //initialize to 0
     int count = 1;
+    UINT64 totalLen = 0;
     splitLine_t * line;
-    while (true)
+    // Read the first line to prime the loop, and also to allow checking for malformed input.
+    line = readLine(state->inputFile);
+    checkBAMfile(line);
+    while (line != NULL && line->fields[0][0] == '@')
     {
-        line = readLine(state->inputFile);
-        // Check if we have exhausted the header.
-        if (line == NULL || line->fields[0][0] != '@') break;
         // Process input line to see if it defines a sequence.
         if (streq(line->fields[0], "@SQ"))
         {
+            char * seqID = NULL;
+            int seqNum = 0;
+            UINT32 seqLen = 0;
+            UINT64 seqOff = 0;
             for (int i=1; i<line->numFields; ++i)
             {
                 if (strncmp(line->fields[i], "SN:", 3) == 0)
                 {
-                    // Unless we are marking dups, we don't need to use sequence numbers.
-                    if (!state->acceptDups) state->seqs[strdup(line->fields[i]+3)] = count;
+                    seqID = line->fields[i]+3;
+                    seqNum = count;
                     count += 1;
                 }
+                else if (strncmp(line->fields[i], "LN:", 3) == 0)
+                {
+                    seqLen = (UINT32)str2int(line->fields[i]+3);
+                    seqOff = totalLen;
+                    totalLen += (UINT64)(seqLen+1);
+                }
+            }
+
+            // Unless we are marking dups, we don't need to use sequence numbers.
+            if (!state->acceptDups)
+            {
+                // grow seqLens and seqOffs arrays
+                if(seqNum % 32768 == 1)
+                {
+                    state->seqLens = (UINT32*)realloc(state->seqLens, (seqNum+32768)*sizeof(UINT32));
+                    state->seqOffs = (UINT64*)realloc(state->seqOffs, (seqNum+32768)*sizeof(UINT64));
+                }
+
+                state->seqs[strdup(seqID)] = seqNum;
+                state->seqLens[seqNum] = seqLen;
+                state->seqOffs[seqNum] = seqOff;
             }
         }
         // Output the header line.
@@ -1421,7 +1507,11 @@ int main (int argc, char *argv[])
         if (state->splitterFile != NULL)
             writeLine(line, state->splitterFile);
         disposeSplitLines(line);
+
+        // Read in next line.
+        line = readLine(state->inputFile);
     }
+
     // Output the @PG header lines.
     printPGsamLine(state->outputFile, state);
     printPGsamLine(state->discordantFile, state);
@@ -1443,12 +1533,14 @@ int main (int argc, char *argv[])
     if (!state->acceptDups)
     {
         // Make sure we can handle the number of sequences.
-        if (count >= (1 << 15))
+        int binCount = (totalLen >> BIN_SHIFT)+1;
+        if (binCount >= (1 << 15))
         {
             fatalError("samblaster: Too many sequences in header of input sam file.  Exiting.\n");
         }
 
-        state->sigArraySize = count * count * 4;
+        state->binCount = binCount;
+        state->sigArraySize = binCount * binCount * 4;
         state->sigs = (sigSet_t *) malloc(state->sigArraySize * sizeof(sigSet_t));
         if (state->sigs == NULL) fatalError("samblaster: Unable to allocate signature set array.");
         for (UINT32 i=0; i<state->sigArraySize; i++) hashTableInit(&(state->sigs[i]));
