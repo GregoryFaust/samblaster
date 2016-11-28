@@ -33,6 +33,7 @@
 // I like having these shorter name.
 typedef uint64_t UINT64;
 typedef uint32_t UINT32;
+typedef int32_t   INT32;
 
 // Some helper routines.
 
@@ -120,8 +121,24 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 // They form a singly linked list so that we can form groups of them,
 //     and also so that we can keep a freelist of them.
 
+// Reference offsets (pos) can be negative or run off the end of a contig due to clipping.
+// Therefore, we will use a padding strategy.
+// The space allocated to each contig will be padded by twice the max read length.
+// This leaves room for both offset underflow and overflow.
+// And all offsets will be shifted higher by the max read length.
+// This will eliminate negative offsets and "center" offsets within the offset range for the contig.
+typedef INT32 pos_t; 
+#define MAX_SEQUENCE_LENGTH 250 // Current illumina paired-end reads are at most 150 + 150
+inline int padLength(int length)
+{
+    return length + (2 * MAX_SEQUENCE_LENGTH);
+}
+inline int padPos(int pos)
+{
+    return pos + MAX_SEQUENCE_LENGTH;
+}
+
 // We need to pre-define these for the SAM specific fields.
-typedef UINT32 pos_t; // Type for reference offsets (pos can be negative w/ softclips, but still works fine as unsigned rollover).
 typedef UINT64 sgn_t; // Type for signatures for offsets and lengths.
 // And the type itself for the next pointer.
 typedef struct splitLine splitLine_t;
@@ -476,9 +493,10 @@ inline int str2int (char * str)
     return strtol(str, NULL, 0);
 }
 
+// Need to change this if pos is unsigned.
 inline pos_t str2pos (char * str)
 {
-    return strtoul(str, NULL, 0);
+    return strtol(str, NULL, 0);
 }
 
 // Temp buffer to use to form new flag field when marking dups.
@@ -648,8 +666,8 @@ inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, int binCo
     UINT32 s2 = (second->binNum * 2) + (isReverseStrand(second) ? 1 : 0);
     UINT32 retval = (s1 * binCount * 2) + s2;
 #ifdef DEBUG
-    fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %lu result %d\n",
-            first->binNum, isReverseStrand(first), s1, second->binNum, isReverseStrand(second), s2, binCount, retval);
+    fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %d result %d read: %s\n",
+            first->binNum, isReverseStrand(first), s1, second->binNum, isReverseStrand(second), s2, binCount, retval, first->fields[QNAME]);
 #endif
     return retval;
 }
@@ -754,6 +772,9 @@ void calcOffsets(splitLine_t * line)
         line->SQO = line->eclip;
         line->EQO = line->eclip + line->qaLen - 1;
     }
+    // Need to pad the pos in case it is negative
+    line->pos = padPos(line->pos);
+    // Let's not calculate these again for this line.
     line->CIGARprocessed = true;
 }
 
@@ -1451,9 +1472,11 @@ int main (int argc, char *argv[])
     }
 
     // Read in the SAM header and create the seqs structure.
-    state->seqs[strdup("*")] = 0;
     state->seqLens = (UINT32*)calloc(1, sizeof(UINT32)); //initialize to 0
     state->seqOffs = (UINT64*)calloc(1, sizeof(UINT64)); //initialize to 0
+    state->seqs[strdup("*")] = 0;
+    state->seqLens[0] = padLength(0);
+    state->seqOffs[0] = 0;
     int count = 1;
     UINT64 totalLen = 0;
     splitLine_t * line;
@@ -1479,7 +1502,7 @@ int main (int argc, char *argv[])
                 }
                 else if (strncmp(line->fields[i], "LN:", 3) == 0)
                 {
-                    seqLen = (UINT32)str2int(line->fields[i]+3);
+                    seqLen = (UINT32)padLength(str2int(line->fields[i]+3));
                     seqOff = totalLen;
                     totalLen += (UINT64)(seqLen+1);
                 }
@@ -1533,14 +1556,17 @@ int main (int argc, char *argv[])
     if (!state->acceptDups)
     {
         // Make sure we can handle the number of sequences.
-        int binCount = (totalLen >> BIN_SHIFT)+1;
+        int binCount = (totalLen >> BIN_SHIFT);
         if (binCount >= (1 << 15))
         {
             fatalError("samblaster: Too many sequences in header of input sam file.  Exiting.\n");
         }
 
         state->binCount = binCount;
-        state->sigArraySize = binCount * binCount * 4;
+        state->sigArraySize = (binCount * 2 + 1) * (binCount * 2 + 1)+1;
+#ifdef DEBUG
+        fprintf(stderr, "samblaster: Signature Array Size = %d\n", state->sigArraySize);
+#endif
         state->sigs = (sigSet_t *) malloc(state->sigArraySize * sizeof(sigSet_t));
         if (state->sigs == NULL) fatalError("samblaster: Unable to allocate signature set array.");
         for (UINT32 i=0; i<state->sigArraySize; i++) hashTableInit(&(state->sigs[i]));
@@ -1548,7 +1574,6 @@ int main (int argc, char *argv[])
 
     // Now start processing the alignment records.
     // line already has the first such line in it unless the file only has a header.
-    // Initialize our signature set.
     // Keep a ptr to the end of the current list.
     splitLine_t * last = line;
     count = 1;
