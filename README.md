@@ -1,4 +1,4 @@
-#*samblaster*
+# *samblaster*
 
 **Written by:** Greg Faust (gf4ea@virginia.edu)  
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
@@ -15,12 +15,12 @@ Click the preceeding link or download the file from this repository.
 
 Support for Linux and OSX (Version 10.7 or higher).
 
-##Summary
+## Summary
 *samblaster* is a fast and flexible program for marking duplicates in __read-id grouped<sup>1</sup>__ paired-end SAM files.
 It can also optionally output discordant read pairs and/or split read mappings to separate SAM files, and/or unmapped/clipped reads to a separate FASTQ file.
 When marking duplicates, *samblaster* will require approximately 20MB of memory per 1M read pairs.
 
-##Installation
+## Installation
 *samblaster* is self contained and therefore has no installation dependencies beyond **g++** and **make**.  
 
 *samblaster* can be downloaded from the **_releases_** tab or manually downloaded via *git clone*.  Afterwards, simply use *make* and copy *samblaster* to a directory in your path.  For example:
@@ -31,7 +31,7 @@ make
 cp samblaster /usr/local/bin/.
 ~~~~~~~~~~~~~~~~~~
 
-##Usage
+## Usage
 See the [SAM File Format Specification](http://samtools.sourceforge.net/SAMv1.pdf) for details about the SAM alignment format.
 
 By default, *samblaster* reads SAM input from **stdin** and writes SAM to **stdout**. Input SAM files usually contain paired end data (see [Duplicate Identification](#DupIdentification) below), must contain a sequence header, and must be __read-id grouped<sup>1<sup>__.
