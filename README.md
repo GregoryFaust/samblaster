@@ -6,7 +6,7 @@
 **Please cite:**  
 [Faust, G.G. and Hall, I.M., “*SAMBLASTER*: fast duplicate marking and structural variant read extraction,” *Bioinformatics* Sept. 2014; **30**(17): 2503-2505.](http://bioinformatics.oxfordjournals.org/content/30/17/2503)
 
-**Also see:** [SAMBLASTER_Supplemental.pdf] (https://www.dropbox.com/s/s7vvdtf2gmytvay/SAMBLASTER_Supplemental.pdf?dl=0) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.  
+**Also see:** [SAMBLASTER_Supplemental.pdf](https://www.dropbox.com/s/s7vvdtf2gmytvay/SAMBLASTER_Supplemental.pdf?dl=0) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.  
 Click the preceeding link or download the file from this repository.
 
 ---
