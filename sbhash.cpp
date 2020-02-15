@@ -10,7 +10,7 @@
 
     License Information:
 
-    Copyright 2013-2016 Gregory G. Faust
+    Copyright 2013-2020 Gregory G. Faust
 
     Licensed under the MIT license (the "License");
     You may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ char * pushNewLBMallocBlock(int blockSize, LBMallocBlock_t **blockArrayPtr)
 {
     char * newBlock = blockMalloc(blockSize);
     LBMallocBlock_t * newMallocBlock = (LBMallocBlock_t *)malloc(sizeof(LBMallocBlock_t));
-    if (newMallocBlock == NULL) fatalError("samblaster: Insufficeint memory available to allocate (more) objects.");
+    if (newMallocBlock == NULL) fatalError("samblaster: Insufficeint memory available to allocate (more) objects.\n");
     newMallocBlock->size = blockSize;
     newMallocBlock->block = newBlock;
     newMallocBlock->next = *blockArrayPtr;
