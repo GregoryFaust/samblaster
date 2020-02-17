@@ -22,8 +22,6 @@
 
 */
 
-// #define DEBUG_DUP_IDS
-
 // This define is needed for portable definition of PRIu64
 #define __STDC_FORMAT_MACROS
 
@@ -348,8 +346,9 @@ void addTag(splitLine_t * line, const char * header, const char * val)
     line->bufLen = newlen;
 }
 
-#ifdef DEBUG_DUP_IDS
-// TODO. Is there any reason to keep this around??
+#if 0
+// This was originally written to test for mismatched MC tags between BWA MEM and samblaster.
+// I keep it around, as some version of this would be useful if/when we add support for RGs and/or UMIs.
 // Note that this conses up a string, so the caller will have to free it later to avoid a leak.
 char * getTagVal (char *  tags, char * tagID)
 {
@@ -675,17 +674,8 @@ inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
     UINT64 final;
     if (orphan)
     {
-        // TODO: Clean this up.
-
         // For an orphan, we only use information fron the second read.
         final = second->binPos;
-
-        // This is the most conservative way to allow for forward and reverse strand alignemnts to play together.
-        // It ensures that BOTH ends of the alignment are at the same offset.
-        // UINT64 t1 = second->binPos;
-        // UINT64 t2 = t1 << 32;
-        // The second term is right out of processCIGAR.
-        // final = t2 | (second->rapos + second->raLen + second->eclip - 1);
     }
     else
     {
@@ -700,12 +690,10 @@ inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
 template <bool orphan>
 inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, int binCount)
 {
-    UINT32 retval;
-    UINT32 s1;
-    UINT32 s2;
+    UINT32 s1, s2;
     if (orphan)
     {
-        // For orphas, we only use the binNum of the second, and treat it as if on the forward strand.
+        // For orphans, we only use the binNum of the second, and treat it as if on the forward strand.
         s1 = 0;
         s2 = (second->binNum * 2);
     }
@@ -714,16 +702,7 @@ inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, int binCo
         s1 = (first->binNum * 2) + (isReverseStrand(first) ? 1 : 0);
         s2 = (second->binNum * 2) + (isReverseStrand(second) ? 1 : 0);
     }
-    // TODO: can't we just return this without having two consequitive lines?
-    retval = (s1 * binCount * 2) + s2;
-
-#ifdef DEBUG
-    // TODO: This will segfault on an orphan
-    fprintf(stderr, "1st %d %d -> %d 2nd %d %d -> %d count %d result %d read: %s\n",
-            first->binNum, isReverseStrand(first), s1, second->binNum, isReverseStrand(second), s2, binCount, retval, second->fields[QNAME]);
-#endif
-
-    return retval;
+    return (UINT32)(s1 * binCount * 2) + s2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -901,13 +880,6 @@ void addMTs(splitLine_t * block, state_t * state, splitLine_t * first, splitLine
         splitLine_t * line = state->splitterArray[i];
         if (!substr_of(line->fields[TAGS], "MC:Z:")) addTag(line, "	MC:Z:", first->fields[CIGAR]);
         if (!substr_of(line->fields[TAGS], "MQ:i:")) addTag(line, "	MQ:i:", first->fields[MAPQ]);
-
-#ifdef DEBUG_DUP_IDS
-        // Temporary code to see how often bwa MC tag differs from the actual mate's CIGAR string.
-        char * lineMCval = getTagVal(line->fields[TAGS], (char *) "MC:Z:");
-        fprintf(stdout, "%s\t%3X\t%s\t%s\t%s\t%s\t%s\n", line->fields[QNAME], line->flag, line->fields[CIGAR], lineMCval, first->fields[CIGAR], line->fields[MAPQ], first->fields[MAPQ]);
-        free (lineMCval);
-#endif
     }
 }
 
@@ -992,10 +964,6 @@ void prepareSigValues(splitLine_t * line, state_t * state, bool orphan)
     int paddedPos = padPos(line->pos, state);
     line->binNum = (seqOff + paddedPos) >> BIN_SHIFT;
     line->binPos = (seqOff + paddedPos) &  BIN_MASK;
-
-#ifdef DEBUG
-    fprintf(stderr, "%s\t%12d\t%12d\t%12d\t%12d\n", line->fields[QNAME], line->qaLen, fullqlen, line->binNum, state->binCount);
-#endif
 }
 
 // This is the main workhorse that determines if lines are dups or not.
@@ -1119,12 +1087,6 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
             }
         }
 
-#ifdef DEBUG
-        fprintf(stderr, "samblaster: HashOff:%4d sig:%"PRIu64" idCount:%"PRIu64" length of sigs array:%d\n",  off, sig, idCount, state->sigArraySize);
-        fprintf(stderr, "samblaster: seqNum:%10d seqOff:%"PRIu64" binNum:%10d binPos:%10d\n", second->seqNum, seqOff, second->binNum, second->binPos);
-        fprintf(stderr, "samblaster: %s\n", second->fields[QNAME]);
-#endif
-
         // Attempt insert into the sigs structure.
         // The return value will tell us if it was already there.
         bool insert = hashTableInsert(&(state->sigs[off]), sig);
@@ -1230,10 +1192,13 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
     qsort(state->splitterArray, count, sizeof(splitLine_t *), compQOs);
 
     // Now check for pairs that match the desired parameters.
-    splitLine_t * left = state->splitterArray[0];
-    splitLine_t * right;
+    // Initialize the trailing pointer list enumeration.
+    splitLine_t * left, * right;
+    right = state->splitterArray[0];
     for (int i=1; i<count; i++)
     {
+        // Set up pair for next iteration.
+        left = right;
         right = state->splitterArray[i];
 
         // First check for minNonOverlap.
@@ -1242,7 +1207,7 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
         int alen1 = 1 + left->EQO - left->SQO;
         int alen2 = 1 + right->EQO - right->SQO;
         int mno = std::min(alen1-overlap, alen2-overlap);
-        if (mno < state->minNonOverlap) goto nextIter;
+        if (mno < state->minNonOverlap) continue;
 
         // Now check for the deserts and diagonal difference.
         // If they are on different chroms or strands, they pass without the other checks.
@@ -1270,18 +1235,14 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
             // The absolute value will handle both inserts and deletes.
             // So check indel is big enough, and that there are not too many unmapped bases.
             // Subtract the inadvertant desert gap of inserts.
-            if ((abs(insSize) < state->minIndelSize)
-                || ((desert > 0) && ((desert - (int)std::max(0, insSize)) > state->maxUnmappedBases)))
-                goto nextIter;
+            if ((abs(insSize) < state->minIndelSize) ||
+                ((desert > 0) && ((desert - (int)std::max(0, insSize)) > state->maxUnmappedBases)))
+                continue;
         }
         // We made it through the gamet.
         // Mark this pair for output.
         left->splitter = true;
         right->splitter = true;
-
-    nextIter:
-        // Get ready for the next iteration.
-        left = right;
     }
 }
 
@@ -1821,9 +1782,6 @@ int main (int argc, char *argv[])
 
         state->binCount = binCount;
         state->sigArraySize = (binCount * 2 + 1) * (binCount * 2 + 1)+1;
-#ifdef DEBUG
-        fprintf(stderr, "samblaster: Signature Array Size = %d\n", state->sigArraySize);
-#endif
         state->sigs = (sigSet_t *) malloc(state->sigArraySize * sizeof(sigSet_t));
         if (state->sigs == NULL) fatalError("samblaster: Unable to allocate signature set array.");
         for (UINT32 i=0; i<state->sigArraySize; i++) hashTableInit(&(state->sigs[i]));
