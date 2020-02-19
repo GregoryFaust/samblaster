@@ -893,10 +893,10 @@ void brokenBlock(splitLine_t *block, int count)
 }
 
 // Some fields for statistics.
-// TODO Do we want to add counts for the number of orphans and orphan dups??
-// TODO Picard gives these stats.
 UINT64 idCount = 0;
 UINT64 dupCount = 0;
+UINT64 orphanIdCount = 0;
+UINT64 orphanDupCount = 0;
 UINT64 discCount = 0;
 UINT64 splitCount = 0;
 UINT64 unmapClipCount = 0;
@@ -1057,6 +1057,8 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         UINT32 off;
         if (orphan)
         {
+            // Add to the orphan ID count.
+            orphanIdCount += 1;
             // Now find the signature of the pair.
             sig = calcSig<true>(first, second);
             // Calculate the offset into the signatures array.
@@ -1101,6 +1103,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         if (!insert)
         {
             dupCount += 1;
+            if (orphan) orphanDupCount += 1;
             // We always mark all or none of a block as dup.
             for (splitLine_t * line = block; line != NULL; line = line->next)
             {
@@ -1192,14 +1195,11 @@ void markSplitterUnmappedClipped(splitLine_t * block, state_t * state, int mask,
     qsort(state->splitterArray, count, sizeof(splitLine_t *), compQOs);
 
     // Now check for pairs that match the desired parameters.
-    // Initialize the trailing pointer list enumeration.
-    splitLine_t * left, * right;
-    right = state->splitterArray[0];
     for (int i=1; i<count; i++)
     {
         // Set up pair for next iteration.
-        left = right;
-        right = state->splitterArray[i];
+        splitLine_t * left = state->splitterArray[i-1];
+        splitLine_t * right = state->splitterArray[i];
 
         // First check for minNonOverlap.
         // We don't allow negative overlap, as that will lead to wrong non-overlap calculation.
@@ -1427,16 +1427,15 @@ void printRunStats(state_t * state)
         fprintf(stderr, "samblaster: Found %"PRIu64" reads longer than the --maxReadLength(%d). The longest was %d bases long.\n", readTooLongCount, state->maxReadLength, readTooLongMax);
         fprintf(stderr, "samblaster: Consider rerunning samblaster with a larger --maxReadLength.\n");
     }
-    if (state->removeDups)
-    {
-        fprintf(stderr, "samblaster: Removed %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates",
-                dupCount, idCount, ((double)100)*dupCount/idCount);
-    }
-    else
-    {
-        fprintf(stderr, "samblaster: Marked %"PRIu64" of %"PRIu64" (%4.2f%%) read ids as duplicates",
-                dupCount, idCount, ((double)100)*dupCount/idCount);
-    }
+    // Now the main output stats.
+    char * tempStr = (char *) (state->removeDups ? "Removed" : "Marked");
+    fprintf(stderr, "samblaster: %s %"PRIu64" of %"PRIu64" (%4.2f%%) orphan/singleton read ids as duplicates\n",
+            tempStr, orphanDupCount, orphanIdCount, ((double)100)*orphanDupCount/orphanIdCount);
+    if (dupCount != orphanDupCount)
+        fprintf(stderr, "samblaster: %s %"PRIu64" of %"PRIu64" (%4.2f%%) paired read ids (both mapped) as duplicates\n",
+                tempStr, dupCount-orphanDupCount, idCount-orphanIdCount, ((double)100)*(dupCount-orphanDupCount)/(idCount-orphanIdCount));
+    fprintf(stderr, "samblaster: %s %"PRIu64" of %"PRIu64" (%4.2f%%) total read ids as duplicates",
+           tempStr, dupCount, idCount, ((double)100)*dupCount/idCount);
     if ((TIMING == 0) || state->quiet)
     {
         fprintf(stderr, ".\n");
