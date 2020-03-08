@@ -716,7 +716,7 @@ inline int getSeqNum(splitLine_t * line, int field, state_t * state)
     if (findret == state->seqs.end())
     {
         char * temp;
-        asprintf(&temp, "samblaster: Unable to find seq %s for readid %s in sequence map.\n", line->fields[field], line->fields[QNAME]);
+        asprintf(&temp, "samblaster: Unable to find sequence '%s' in sequence map for readid %s\n", line->fields[field], line->fields[QNAME]);
         fatalError(temp);
     }
     return findret->second;
@@ -893,18 +893,21 @@ void brokenBlock(splitLine_t *block, int count)
 }
 
 // Some fields for statistics.
+// In order to form a partition of all the reads (i.e. account for all ids)
+//    we need weird categories such as noPrimary, and unmapped orphans.
 UINT64 idCount = 0;
 UINT64 dupCount = 0;
-UINT64 orphanIdCount = 0;
+UINT64 noPrimaryIdCount = 0;
+UINT64 bothUnmappedIdCount = 0;
+UINT64 unmappedOrphanIdCount = 0;
+UINT64 mappedOrphanIdCount = 0;
 UINT64 orphanDupCount = 0;
 UINT64 bothMappedDupCount = 0;
 UINT64 bothMappedIdCount = 0;
-UINT64 bothUnmappedIdCount = 0;
 UINT64 discCount = 0;
 UINT64 splitCount = 0;
 UINT64 unmapClipCount = 0;
 UINT64 unmatedCount = 0;
-UINT64 noPrimaryCount = 0;
 UINT64 readTooLongCount = 0;
 INT32  readTooLongMax = 0;
 // We also make the state (and timing info) global to aid error processing
@@ -996,7 +999,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
     {
         if (state->ignoreUnmated) 
         {
-            noPrimaryCount += 1; 
+            noPrimaryIdCount += 1; 
             return;
         }
         brokenBlock(block, count);
@@ -1021,7 +1024,15 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         }
 
         // If the only read we have is unmapped, then it can't be a dup.
-        if (isUnmapped(second)) return;
+        if (isUnmapped(second))
+        {
+            if (state->ignoreUnmated)
+            {
+                unmappedOrphanIdCount += 1;
+                return;
+            }
+            brokenBlock(block, count);
+        }
 
         // We have a processable singleton.
         orphan = true;
@@ -1054,7 +1065,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
     }
 
     // Keep track of the ID category.
-    if (orphan) orphanIdCount += 1;
+    if (orphan) mappedOrphanIdCount += 1;
     else        bothMappedIdCount +=1;
     
     // Now look for duplicates.
@@ -1425,61 +1436,90 @@ void printRunStats(state_t * state)
             fprintf(stderr, "samblaster: Output  %10"PRIu64" unmapped/clipped reads to %s\n", unmapClipCount, state->unmappedClippedFileName);
     }
 
-    // Now the stats tha might indicate a problem that therefore deserve reporting even if quiet set.
+    // Now the stats that might indicate a problem that therefore deserve reporting even if quiet set.
+    if (readTooLongCount > 0)
+    {
+        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%5.3f) total read ids longer than the --maxReadLength(%d)\n."
+                        "samblaster: The longest of which is %d bases long.\n", 
+                readTooLongCount, idCount, ((double)100)*readTooLongCount/idCount, state->maxReadLength, readTooLongMax);
+        fprintf(stderr, "samblaster: Consider rerunning samblaster with a larger --maxReadLength.\n");
+    }
     if (state->ignoreUnmated)
     {
-        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%4.2f%%) total read ids are unmated.\n",
+        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%5.3f%%) total read ids are marked paired yet are unmated.\n",
                 unmatedCount, idCount, ((double)100)*unmatedCount/idCount);
         if (unmatedCount > 0) fprintf(stderr, "samblaster: Please double check that input file is read-id (QNAME) grouped.\n");
     }
-    if (noPrimaryCount > 0)
+    if (noPrimaryIdCount > 0)
     {
-        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%4.2f%%) total read ids with no primary alignment.\n",
-                noPrimaryCount, idCount, ((double)100)*noPrimaryCount/idCount);
+        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%5.3f%%) total read ids with no primary alignment.\n",
+                noPrimaryIdCount, idCount, ((double)100)*noPrimaryIdCount/idCount);
         if (unmatedCount > 0) fprintf(stderr, "samblaster: Please double check that input file is read-id (QNAME) grouped.\n");
     }
-    if (readTooLongCount > 0)
-    {
-        fprintf(stderr, "samblaster: Found   %10"PRIu64" reads longer than the --maxReadLength(%d)."
-                        " The longest was %d bases long.\n", readTooLongCount, state->maxReadLength, readTooLongMax);
-        fprintf(stderr, "samblaster: Consider rerunning samblaster with a larger --maxReadLength.\n");
-    }
+
     // Now the main output stats.
-    char * tempStr = (char *) (state->removeDups ? "Removed" : "Marked ");
-    // The both-unmapped and both-mapped stats are only output if there are no unmated reads.
-    // This is the only case in which we can ensure that both-unmapped, orphan, and both-mapped ids form a partition of all read ids.
+    // We need no unmated reads in order to ensure that the various id types form a partition of all read ids.
     // This is because unmated reads could indicate an incorrectly sorted file which could cause double counting of ids.
-    // We test the unmated reads instead of --ignoreUnmated, as the latter doesn't mean we actually FIND any unmated.
-    if (!state->quiet && unmatedCount == 0 && bothUnmappedIdCount > 0)
+    // Therefore, to be conservative, we should only output the table with both-unmapped, orphan and both-mapped stats in that case.
+    // NOTE: the correct test is the unmated reads instead of --ignoreUnmated, as the latter doesn't mean we actually FIND any unmated.
+    // However, I have decided to output them even if there are unmated reads because we do warn above in that case.
+
+    // We need to have at least two id types to make sense to output the table.
+    int idCountTypes = 0;
+    if (bothUnmappedIdCount > 0)   idCountTypes += 1;
+    if (unmappedOrphanIdCount > 0) idCountTypes += 1;
+    if (mappedOrphanIdCount > 0)   idCountTypes += 1;
+    if (bothMappedIdCount > 0)     idCountTypes += 1;
+    // We need dups for the denominators to avoid div by zero.
+    if (!state->quiet && dupCount > 0 && idCountTypes > 1)
     {
-        fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%4.2f%%) total read ids with both reads unmapped.\n",
-                bothUnmappedIdCount, idCount, ((double)100)*bothUnmappedIdCount/idCount);
-    }                
-    if (!state->quiet && orphanIdCount > 0)
-    {
-        fprintf(stderr, "samblaster: %s %10"PRIu64" of %10"PRIu64" (%4.2f%%) orphan/singleton read ids as duplicates.\n",
-                tempStr, orphanDupCount, orphanIdCount, ((double)100)*orphanDupCount/orphanIdCount);
+        // We vary the names and spacing of the type names depending on whether or not there are any unmapped orphans.
+        // Use shorter strings with less blank space if there are none, as should be common for properly grouped paired-end data.
+        char * orphanString = (char *)((unmappedOrphanIdCount > 0) ? "Mapped Orphan/Singleton  " : "Orphan/Singleton");
+        int typeLength = strlen(orphanString);
+        fprintf(stderr, "samblaster:\n");
+        fprintf(stderr, "samblaster: %*.*s Type_ID_Count   %%Type/All_IDs Dup_ID_Count  %%Dups/Type_ID_Count  %%Dups/All_Dups  %%Dups/All_IDs\n",
+                typeLength, typeLength, "Pair Type                                       ");
+        fprintf(stderr, "samblaster: %*.*s-----------------------------------------------------------------------------------------------\n",
+                typeLength, typeLength, "------------------------------------------------");
+        // These first two can't produce any dups.
+        if (bothUnmappedIdCount > 0)
+        {
+            fprintf(stderr, "samblaster: %*.*s   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n",
+                    typeLength, typeLength, "Both Unmapped                                   ",
+                    bothUnmappedIdCount, ((double)100)*bothUnmappedIdCount/idCount, (UINT64)0, (double)0, (double)0, (double)0);
+        }
+        if (unmappedOrphanIdCount > 0)
+        {
+            fprintf(stderr, "samblaster: %*.*s   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n",
+                    typeLength, typeLength, "Unmapped Orphan/Singleton                       ",
+                    unmappedOrphanIdCount, ((double)100)*unmappedOrphanIdCount/idCount, (UINT64)0, (double)0, (double)0, (double)0);
+        }
+        // All orphanDups are, of course, from mapped orphans.
+        if (mappedOrphanIdCount > 0)
+        {
+            fprintf(stderr, "samblaster: %*.*s   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n",
+                    typeLength, typeLength, orphanString,
+                    mappedOrphanIdCount, ((double)100)*mappedOrphanIdCount/idCount, orphanDupCount,
+                    ((double)100)*orphanDupCount/mappedOrphanIdCount, ((double)100)*orphanDupCount/dupCount, ((double)100)*orphanDupCount/idCount);
+        }
+        if (bothMappedIdCount > 0)
+        {
+            fprintf(stderr, "samblaster: %*.*s   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n",
+                    typeLength, typeLength, "Both Mapped                                     ",
+                    bothMappedIdCount, ((double)100)*bothMappedIdCount/idCount, bothMappedDupCount, ((double)100)*bothMappedDupCount/bothMappedIdCount,
+                    ((double)100)*bothMappedDupCount/dupCount, ((double)100)*bothMappedDupCount/idCount);
+        }
+        fprintf(stderr, "samblaster: %*.*s   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n",
+                typeLength, typeLength, "Total                                           ",
+                idCount, ((double)100)*idCount/idCount, dupCount,
+                ((double)100)*dupCount/idCount, (double)100, ((double)100)*dupCount/idCount);
+        fprintf(stderr, "samblaster:\n");
     }
-    if (!state->quiet && unmatedCount == 0 && bothMappedIdCount > 0)
-    {
-        fprintf(stderr, "samblaster: %s %10"PRIu64" of %10"PRIu64" (%4.2f%%) paired read ids (both mapped) as duplicates.\n",
-                tempStr, bothMappedDupCount, bothMappedIdCount, ((double)100)*bothMappedDupCount/bothMappedIdCount);
-    }
-    fprintf(stderr, "Pair Type        Type_ID_Count   %%Type/All_IDs Dup_ID_Count  %%Dups/Type_ID_Count  %%Dups/All_Dups  %%Dups/All_IDs\n");
-    fprintf(stderr, "Both Unmapped      %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n", 
-            bothUnmappedIdCount, ((double)100)*bothUnmappedIdCount/idCount, (UINT64)0, 
-            ((double)100)*0/bothUnmappedIdCount, ((double)100)*0/dupCount, ((double)100)*0/idCount);
-    fprintf(stderr, "Orphan/Singleton   %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n", 
-            orphanIdCount, ((double)100)*orphanIdCount/idCount, orphanDupCount, 
-            ((double)100)*orphanDupCount/orphanIdCount, ((double)100)*orphanDupCount/dupCount, ((double)100)*orphanDupCount/idCount);
-    fprintf(stderr, "Both Mapped        %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n", 
-            bothMappedIdCount, ((double)100)*bothMappedIdCount/idCount, bothMappedDupCount, ((double)100)*bothMappedDupCount/bothMappedIdCount,
-            ((double)100)*bothMappedDupCount/dupCount, ((double)100)*bothMappedDupCount/idCount);
-    fprintf(stderr, "Total              %10"PRIu64"       %7.3f     %10"PRIu64"         %7.3f           %7.3f        %7.3f\n", 
-            idCount, ((double)100)*idCount/idCount, dupCount, 
-            ((double)100)*dupCount/idCount, ((double)100)*1.0, ((double)100)*dupCount/idCount);
-    fprintf(stderr, "samblaster: %s %10"PRIu64" of %10"PRIu64" (%4.2f%%) total read ids as duplicates",
-            tempStr, dupCount, idCount, ((double)100)*dupCount/idCount);
+    // Output the main conclusion even if we output the table.
+    // It includes the fact of whether or not the dups were marked or removed, and the timing info.
+    fprintf(stderr, "samblaster: %s %10"PRIu64" of %10"PRIu64" (%5.3f%%) total read ids as duplicates",
+             (state->removeDups ? "Removed" : "Marked "), dupCount, idCount, ((double)100)*dupCount/idCount);
     if ((TIMING == 0) || state->quiet)
     {
         fprintf(stderr, ".\n");
