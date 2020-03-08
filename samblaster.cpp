@@ -125,7 +125,7 @@ inline UINT64 diffTVs (struct timeval * startTV, struct timeval * endTV)
 // This leaves room for both offset underflow and overflow.
 // And all offsets will be shifted higher by the max read length.
 // This will eliminate negative offsets and "center" offsets within the offset range for the contig.
-typedef INT32 pos_t; 
+typedef INT32 pos_t;
 
 // We need to pre-define these for the SAM specific fields.
 typedef UINT64 sgn_t; // Type for signatures for offsets and lengths.
@@ -355,7 +355,7 @@ char * getTagVal (char *  tags, char * tagID)
     char * startptr = NULL;
     char * endptr = NULL;
     char * retval = NULL;
-    
+
     // Find the start and end of the tag field
     startptr = strstr(tags, tagID);
     if (startptr == NULL) return strdup("");
@@ -367,7 +367,7 @@ char * getTagVal (char *  tags, char * tagID)
     endptr [0] = 0;
     retval = strdup (startptr+strlen(tagID));
     endptr [0] = save;
-    
+
     // Return the dupped string
     return retval;
 
@@ -827,7 +827,7 @@ inline int getEndDiag(splitLine_t * line)
 ///////////////////////////////////////////////////////////////////////////////
 // This was historically 27 bits as that was large enough to hold any human chrom 1 offset.
 // Now that we are using a synthetic genome representation, 27 has no special meaning.
-// There are interesting space/time trade-offs between how large we make the 
+// There are interesting space/time trade-offs between how large we make the
 //   synthetic chroms and how large the various hash tables become.
 // If/when we handle RGs and/or UMIs, the signature scheme will change anyway.
 // Therefore, leave at 27 for now to match space/time tradeoffs of earlier releases.
@@ -939,7 +939,7 @@ void prepareSigValues(splitLine_t * line, state_t * state, bool orphan)
     int fullqlen = (line->sclip + line->qaLen + line->eclip);
 
     // Make sure we don't have any problems with this read longer than our padding will handle.
-    if (fullqlen > state->maxReadLength) 
+    if (fullqlen > state->maxReadLength)
     {
         // The read is longer than our padding will handle.
         readTooLongCount += 1;
@@ -995,11 +995,11 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
     // Figure out what type of "pair" we have.
 
     // First get rid of the useless case of having no first AND no second.
-    if (first == NULL && second == NULL) 
+    if (first == NULL && second == NULL)
     {
-        if (state->ignoreUnmated) 
+        if (state->ignoreUnmated)
         {
-            noPrimaryIdCount += 1; 
+            noPrimaryIdCount += 1;
             return;
         }
         brokenBlock(block, count);
@@ -1013,7 +1013,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         if (second == NULL) swapPtrs(&first, &second);
 
         // If the only read says its paired, and it is unmapped or its mate is mapped, something is wrong.
-        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second))) 
+        if (isPaired(second) && (isUnmapped(second) || isNextMapped(second)))
         {
             if (state->ignoreUnmated)
             {
@@ -1047,7 +1047,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
         }
 
         // Never mark pairs as dups if both sides are unmapped.
-        if (isUnmapped(first) && isUnmapped(second)) 
+        if (isUnmapped(first) && isUnmapped(second))
         {
             bothUnmappedIdCount += 1;
             return;
@@ -1067,7 +1067,7 @@ void markDupsDiscordants(splitLine_t * block, state_t * state)
     // Keep track of the ID category.
     if (orphan) mappedOrphanIdCount += 1;
     else        bothMappedIdCount +=1;
-    
+
     // Now look for duplicates.
     if (!state->acceptDups)
     {
@@ -1417,10 +1417,10 @@ void printUsageStringAbort()
 }
 
 // Output the runtine stats. Used both for normal and premature exit.
-void printRunStats(state_t * state) 
+void printRunStats(state_t * state)
 {
     // This check should be redundant.
-    if (idCount == 0) 
+    if (idCount == 0)
     {
         fprintf(stderr, "samblaster: No reads processed.\n");
         return;
@@ -1440,7 +1440,7 @@ void printRunStats(state_t * state)
     if (readTooLongCount > 0)
     {
         fprintf(stderr, "samblaster: Found   %10"PRIu64" of %10"PRIu64" (%5.3f) total read ids longer than the --maxReadLength(%d)\n."
-                        "samblaster: The longest of which is %d bases long.\n", 
+                        "samblaster: The longest of which is %d bases long.\n",
                 readTooLongCount, idCount, ((double)100)*readTooLongCount/idCount, state->maxReadLength, readTooLongMax);
         fprintf(stderr, "samblaster: Consider rerunning samblaster with a larger --maxReadLength.\n");
     }
@@ -1577,13 +1577,13 @@ void fsError(const char * filename)
 int getIntVal (int argi, int argc, char *argv[])
 {
     char * temp = NULL;
-    if (argi == argc) 
+    if (argi == argc)
     {
         asprintf(&temp, "samblaster: Missing value for option %s\n", argv[argi-1]);
         fatalError(temp);
     }
     int retval = str2int(argv[argi]);
-    if (retval == 0 && !streq(argv[argi], "0")) 
+    if (retval == 0 && !streq(argv[argi], "0"))
     {
         asprintf(&temp, "samblaster: Invalid integer value '%s' for option %s\n", argv[argi], argv[argi-1]);
         fatalError(temp);
@@ -1594,7 +1594,7 @@ int getIntVal (int argi, int argc, char *argv[])
 char * getStrVal (int argi, int argc, char *argv[])
 {
     char * temp = NULL;
-    if (argi == argc) 
+    if (argi == argc)
     {
         asprintf(&temp, "samblaster: Missing value for option %s\n", argv[argi-1]);
         fatalError(temp);
@@ -1851,7 +1851,7 @@ int main (int argc, char *argv[])
     fprintf(stderr, "samblaster: Loaded %d header sequence entries.\n", count-1);
 
     // Make sure we have any more lines to process.
-    if (line == NULL) 
+    if (line == NULL)
     {
         fprintf(stderr, "samblaster: No reads in input SAM file.\n");
         return 0;
