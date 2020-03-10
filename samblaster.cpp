@@ -1347,6 +1347,7 @@ void printPGsamLine(FILE * f, state_t * s)
     else if (s->excludeDups && (s->discordantFile != NULL || s->splitterFile != NULL || s->unmappedClippedFile != NULL)) fprintf(f, " --excludeDups");
     if (s->addMateTags) fprintf(f, " --addMateTags");
     if (s->ignoreUnmated) fprintf(f, " --ignoreUnmated");
+    if (s->maxReadLength != 500) fprintf(f, " --maxReadLength %d", s->maxReadLength);
     if (s->discordantFile != NULL) fprintf(f, " -d %s", s->discordantFileName);
     if (s->splitterFile != NULL)
         fprintf(f, " -s %s --maxSplitCount %d --maxUnmappedBases %d --minIndelSize %d --minNonOverlap %d",
