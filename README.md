@@ -11,7 +11,7 @@ Click the preceeding link or download the file from this repository.
 
 ---
 
-**Current version:** 0.1.24
+**Current version:** 0.1.25
 
 Support for Linux and OSX (Version 10.7 or higher).
 
@@ -64,6 +64,12 @@ To pull split reads and discordants read pairs from a pre-existing BAM file with
 samtools view -h samp.bam | samblaster -a -e -d samp.disc.sam -s samp.split.sam -o /dev/null
 ```
 
+To process a bam file of singleton long reads to pull split and/or unmapped reads with/without marking duplicates:
+'''
+samtools view -h samp.bam | samblaster --ignoreUnmated -e --maxReadLength 100000 [-s samp.split.sam] [-u samp.umc.fasta] | samtools view -Sb - > samp.out.bam
+samtools view -h samp.bam | samblaster --ignoreUnmated -a [-e] [-s samp.split.sam] [-u samp.umc.fasta] -o /dev/null
+'''
+
 ---
 **OPTIONS:**
 Default values enclosed in square brackets []
@@ -84,6 +90,7 @@ Other Options:
    --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.
                           <b>--ignoreUnmated is not recommended for general use. It disables checks that detect incorrectly sorted input.</b>
 -M                        Compatibility mode (details below); both FLAG 0x100 and 0x800 denote supplementary (chimeric). Similar to <i>bwa mem</i> <b>-M</b> option.
+   --maxRaedLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]
    --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]
    --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]
    --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]
@@ -111,7 +118,7 @@ The **-M** flag is used for backward compatibility with older SAM/BAM files in w
 A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
-2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan. In an orphan pair, the unmapped read need not appear in the input file. In addition, mapped non-paired single read alignments will be treated the same as an orphan pair with a missing unmapped read.
+2. For pairs in which only one side is mapped (an "orphan"), the signature of the mapped read must match a previously seen orphan. Starting with *samblaster* 0.1.25, the signatures of orphans ignore strand (all orphans are treated as if on forward strand). In an orphan pair, the unmapped read need not appear in the input file. In addition, mapped non-paired singleton (possible long) read alignments will be treated the same as an orphan pair with a missing unmapped read.
 3. No doubly unmapped pair will be marked as a duplicate.
 4. Any *secondary* or *supplementary* alignment associated with a duplicate *primary* alignment will also be marked as a duplicate.
 
