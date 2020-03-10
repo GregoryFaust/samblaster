@@ -1339,8 +1339,6 @@ void processSAMBlock(splitLine_t * block, state_t * state)
 // Output the @PG line information into a SAM file header
 void printPGsamLine(FILE * f, state_t * s)
 {
-    // TODO remove this early return before release
-    return;
     if (f == NULL) return;
     fprintf(f, "@PG\tID:SAMBLASTER\tVN:0.1.%d\tCL:samblaster -i %s -o %s", BUILDNUM, s->inputFileName, s->outputFileName);
     if (s->compatMode) fprintf(f, " -M");
