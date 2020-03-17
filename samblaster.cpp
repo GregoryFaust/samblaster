@@ -1395,7 +1395,7 @@ void printUsageString()
         "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
         "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.\n"
         "-M                        Run in compatibility mode; both 0x100 and 0x800 are considered chimeric. Similar to BWA MEM -M option.\n"
-        "   --maxRaedLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]\n"
+        "   --maxReadLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]\n"
         "                          Primarily useful for marking duplicates in files containing singleton long reads.\n"
         "   --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]\n"
         "   --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]\n"
