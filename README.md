@@ -1,12 +1,12 @@
 # *samblaster*
 
-**Written by:** Greg Faust (gf4ea@virginia.edu)  
+**Written by:** Greg Faust (gf4ea@virginia.edu)
 [Ira Hall Lab, University of Virginia](http://faculty.virginia.edu/irahall/)
 
-**Please cite:**  
+**Please cite:**
 [Faust, G.G. and Hall, I.M., “*SAMBLASTER*: fast duplicate marking and structural variant read extraction,” *Bioinformatics* Sept. 2014; **30**(17): 2503-2505.](http://bioinformatics.oxfordjournals.org/content/30/17/2503)
 
-**Also see:** [SAMBLASTER_Supplemental.pdf](https://www.dropbox.com/s/s7vvdtf2gmytvay/SAMBLASTER_Supplemental.pdf?dl=0) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.  
+**Also see:** [SAMBLASTER_Supplemental.pdf](https://www.dropbox.com/s/s7vvdtf2gmytvay/SAMBLASTER_Supplemental.pdf?dl=0) for additonal discussion and statistics about the duplicates marked by *samblaster* vs. *Picard* using the NA12878 sample dataset.
 Click the preceeding link or download the file from this repository.
 
 ---
@@ -21,7 +21,7 @@ It can also optionally output discordant read pairs and/or split read mappings t
 When marking duplicates, *samblaster* will require approximately 20MB of memory per 1M read pairs.
 
 ## Installation
-*samblaster* is self contained and therefore has no installation dependencies beyond **g++** and **make**.  
+*samblaster* is self contained and therefore has no installation dependencies beyond **g++** and **make**.
 
 *samblaster* can be downloaded from the **_releases_** tab or manually downloaded via *git clone*.  Afterwards, simply use *make* and copy *samblaster* to a directory in your path.  For example:
 ~~~~~~~~~~~~~~~~~~
@@ -39,10 +39,10 @@ By default, the output SAM file will contain all the alignments in the same orde
 
 __<sup>1</sup>A read-id grouped__ SAM file is one in which all alignments for a read-id (QNAME) are grouped together in adjacent lines.
 Aligners naturally produce such files.
-They can also be created by sorting a SAM file by read-id. 
+They can also be created by sorting a SAM file by read-id.
 But as shown below, sorting the input to *samblaster* by read-id is not required if the alignments are already grouped.
 
-**COMMON USAGE SCENARIOS:**  
+**COMMON USAGE SCENARIOS:**
 
 To take input alignments directly from _bwa mem_ and output to _samtools view_ to compress SAM to BAM:
 ```
@@ -54,12 +54,12 @@ When using the *bwa mem* **-M** option, also use the *samblaster* **-M** option:
 bwa mem -M <idxbase> samp.r1.fq samp.r2.fq | samblaster -M | samtools view -Sb - > samp.out.bam
 ```
 
-To additionally output discordant read pairs and split read alignments:  
+To additionally output discordant read pairs and split read alignments:
 ```
 bwa mem <idxbase> samp.r1.fq samp.r2.fq | samblaster -e -d samp.disc.sam -s samp.split.sam | samtools view -Sb - > samp.out.bam
 ```
 
-To pull split reads and discordants read pairs from a pre-existing BAM file with duplicates already marked:  
+To pull split reads and discordants read pairs from a pre-existing BAM file with duplicates already marked:
 ```
 samtools view -h samp.bam | samblaster -a -e -d samp.disc.sam -s samp.split.sam -o /dev/null
 ```
@@ -87,10 +87,11 @@ Other Options:
 -e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.
 -r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).
    --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.
-   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.
-                          <b>--ignoreUnmated is not recommended for general use. It disables checks that detect incorrectly sorted input.</b>
+   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped,
+                          and either paired-end alignments have been filtered or the input file contains singleton reads.
+                          <b>--ignoreUnmated is not recommended for general use on paired-end data. It disables checks that detect incorrectly sorted input.</b>
 -M                        Compatibility mode (details below); both FLAG 0x100 and 0x800 denote supplementary (chimeric). Similar to <i>bwa mem</i> <b>-M</b> option.
-   --maxRaedLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]
+   --maxReadLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]
    --maxSplitCount    INT Maximum number of split alignments for a read to be included in splitter file. [2]
    --maxUnmappedBases INT Maximum number of un-aligned bases between two alignments to be included in splitter file. [50]
    --minIndelSize     INT Minimum structural variant feature size for split alignments to be included in splitter file. [50]
@@ -103,7 +104,7 @@ Other Options:
 </pre>
 
 ---
-**ALIGNMENT TYPE DEFINITIONS:<a name="Definitions"></a>**  
+**ALIGNMENT TYPE DEFINITIONS:<a name="Definitions"></a>**
 Below, we will use the following definitions for alignment types.
 Starting with *samblaster* release 0.1.22, these definitions are affected by the use of the **-M** option.
 By default, *samblaster* will use the current definitions of alignment types as specified in the [SAM Specification](http://samtools.sourceforge.net/SAMv1.pdf).
@@ -114,7 +115,7 @@ Only *primary* and *supplementary* alignments are used to find chimeric (split-r
 The **-M** flag is used for backward compatibility with older SAM/BAM files in which "chimeric" alignments were marked with FLAG 0x100, and should also be used with output from more recent runs of *bwa mem* using its **-M** option.
 
 ---
-**DUPLICATE IDENTIFICATION:<a name="DupIdentification"></a>**  
+**DUPLICATE IDENTIFICATION:<a name="DupIdentification"></a>**
 A **duplicate** read pair is defined as a pair that has the same *signature* for each mapped read as a previous read pair in the input SAM file.  The *signature* is comprised of the combination of the sequence name, strand, and the reference offset where the 5' end of the read would fall if the read were fully aligned (not clipped) at its 5' end.  The 5' aligned reference position is calculated using a combination of the POS field, the strand, and the CIGAR string.  This definition of *signature* matches that used by *Picard MarkDuplicates*.
 
 1. For pairs in which both reads are mapped, both signatures must match.
@@ -123,16 +124,16 @@ A **duplicate** read pair is defined as a pair that has the same *signature* for
 4. Any *secondary* or *supplementary* alignment associated with a duplicate *primary* alignment will also be marked as a duplicate.
 
 ---
-**DISCORDANT READ PAIR IDENTIFICATION:**  
+**DISCORDANT READ PAIR IDENTIFICATION:**
 A **discordant** read pair is one which meets all of the following criteria:
 
 1. Both side of the read pair are mapped (neither FLAG 0x4 or 0x8 is set).
 2. The *properly paired* FLAG (0x2) is not set.
 3. *Secondary* or *supplementary* alignments are never output as discordant, although a discordant read pair can have such alignments associated with them.
 4. Duplicate read pairs that meet the above criteria will be output as discordant unless the **-e** option is used.
-     
+
 ---
-**SPLIT READ IDENTIFICATION:**  
+**SPLIT READ IDENTIFICATION:**
 **Split Read** alignments are derived from a single read when one portion of the read aligns to a different region of the reference genome than another portion of the read.  Such pairs of alignments often define a structural variant (SV) breakpoint, and are therefore useful input to SV detection algorithms such as [LUMPY](https://github.com/arq5x/lumpy-sv/).  *samblaster* uses the following strategy to identify split reads alignments.
 
 1. Identify reads that have between two and **--maxSplitCount** *primary* and *supplementary* alignments.
@@ -144,7 +145,7 @@ A **discordant** read pair is one which meets all of the following criteria:
 4. Split read alignments that are part of a duplicate read will be output unless the **-e** option is used.
 
 ---
-**UNMAPPED/CLIPPED READ IDENTIFICATION:** 
+**UNMAPPED/CLIPPED READ IDENTIFICATION:**
 An **unmapped** or **clipped** read is a *primary* alignment that is unaligned over all or part of its length respectively.  The lack of a full alignment may be caused by a SV breakpoint that falls within the read.  Therefore, *samblaster* will optionally output such reads to a FASTQ file for re-alignment by a tool, such as [YAHA](https://github.com/GregoryFaust/yaha/), geared toward finding split-read mappings.  *samblaster* applies the following strategy to identify and output unmapped/clipped reads:
 
 1. An **unmapped** read has the *unmapped read* FLAG set (0x4).
