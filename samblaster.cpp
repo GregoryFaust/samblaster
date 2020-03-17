@@ -1378,7 +1378,7 @@ void printUsageString()
         "For use with a pre-existing bam file to pull split, discordant and/or unmapped reads without marking duplicates:\n"
         "     samtools view -h samp.bam | samblaster -a [-e] [-d samp.disc.sam] [-s samp.split.sam] [-u samp.umc.fasta] -o /dev/null\n"
         "For use with a bam file of singleton long reads to pull split and/or unmapped reads with/without marking duplicates:\n"
-        "     samtools view -h samp.bam | samblaster --ignoreUnmated -e --maxReadLength 100000 [-s samp.split.sam] [-u samp.umc.fasta] | samtools view -Sb - > samp.out.bam\n"
+        "     samtools view -h samp.bam | samblaster --ignoreUnmated [-e] --maxReadLength 100000 [-s samp.split.sam] [-u samp.umc.fasta] | samtools view -Sb - > samp.out.bam\n"
         "     samtools view -h samp.bam | samblaster --ignoreUnmated -a [-e] [-s samp.split.sam] [-u samp.umc.fasta] -o /dev/null\n"
 
         "Input/Output Options:\n"
