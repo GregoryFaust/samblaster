@@ -1367,7 +1367,8 @@ void printUsageString()
     const char* useString =
         "Author: Greg Faust (gf4ea@virginia.edu)\n"
         "Tool to mark duplicates and optionally output split reads and/or discordant pairs.\n"
-        "Input sam file must contain paired end data, contain sequence header and be grouped by read ids (QNAME).\n"
+        "Input sam file must contain sequence header and be grouped by read ids (QNAME).\n"
+        "Input typicallly contains paired-end data, although singleton data is allowed with --ignoreUnmated option.\n"
         "Output will be all alignments in the same order as input, with duplicates marked with FLAG 0x400.\n\n"
 
         "Usage:\n"
@@ -1393,7 +1394,8 @@ void printUsageString()
         "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).\n"
         "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
-        "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped and alignments have been filtered.\n"
+        "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped,\n"
+        "                          and either paired-end alignments have been filtered or the input file contains singleton reads.\n"
         "-M                        Run in compatibility mode; both 0x100 and 0x800 are considered chimeric. Similar to BWA MEM -M option.\n"
         "   --maxReadLength    INT Maximum allowed length of the SEQ/QUAL string in the input file. [500]\n"
         "                          Primarily useful for marking duplicates in files containing singleton long reads.\n"
