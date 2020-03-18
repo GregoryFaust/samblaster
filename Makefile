@@ -9,7 +9,7 @@ PROG = samblaster$(BUILDNUM)
 CCFLAGS  = -Wall -Winline -O0 -g -D BUILDNUM=$(BUILDNUM)
 else
 PROG = samblaster
-CCFLAGS  = -Wall -O3 -D BUILDNUM=$(BUILDNUM)
+CCFLAGS  = -Wall -Werror=literal-suffix -O3 -D BUILDNUM=$(BUILDNUM)
 endif
 
 CC	 = gcc
