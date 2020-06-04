@@ -1,12 +1,12 @@
 # Determine the samblaster build number
-BUILDNUM = 25
+BUILDNUM = 26
 # INTERNAL = TRUE
 
 OBJS = samblaster.o sbhash.o
 
 ifdef INTERNAL
 PROG = samblaster$(BUILDNUM)
-CCFLAGS  = -Wall -Winline -O0 -g -D BUILDNUM=$(BUILDNUM)
+CCFLAGS  = -Wall -Winline -Wliteral-suffix -O0 -g -D BUILDNUM=$(BUILDNUM)
 else
 PROG = samblaster
 CCFLAGS  = -Wall -O3 -D BUILDNUM=$(BUILDNUM)
