@@ -11,7 +11,7 @@ Click the preceeding link or download the file from this repository.
 
 ---
 
-**Current version:** 0.1.25
+**Current version:** 0.1.26
 
 Support for Linux and OSX (Version 10.7 or higher).
 
