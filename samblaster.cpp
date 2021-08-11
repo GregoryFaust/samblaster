@@ -32,12 +32,16 @@
 #include <errno.h>
 #include <map>
 #include "sbhash.h"
+#include "khash.h"
 
 // Rename common integer types.
 // I like having these shorter name.
 typedef uint64_t UINT64;
 typedef uint32_t UINT32;
 typedef int32_t   INT32;
+
+// intialize khash
+KHASH_MAP_INIT_INT64(i, UINT32)
 
 // Some helper routines.
 
@@ -147,6 +151,7 @@ struct splitLine
     // It this were a class, these would be in a subclass.
     int   flag;
     pos_t pos;
+    int   grpNum;
     int   seqNum;
     pos_t binPos;
     int   binNum;
@@ -233,26 +238,32 @@ splitLine_t * getSplitLine()
 // Split the line into fields.
 void splitSplitLine(splitLine_t * line, int maxSplits)
 {
-    line->numFields = 0;
-    int fieldStart = 0;
-    // replace the newline with a tab so that it works like the rest of the fields.
-    line->buffer[line->bufLen-1] = '\t';
-    for (int i=0; i<line->bufLen; ++i)
+    //grow fields array as needed
+    if (maxSplits > line->maxFields){
+        line->maxFields = maxSplits;
+        line->fields = (char **)realloc(line->fields, line->maxFields * sizeof(char *));
+    }
+
+    //first field 
+    line->fields[0] = line->buffer;
+    line->numFields = 1;
+
+    //remaining fields
+    for (int i=0; i < line->bufLen-1; ++i)
     {
         if (line->buffer[i] == '\t')
         {
-            line->fields[line->numFields] = line->buffer + fieldStart;
-            line->numFields += 1;
+            line->buffer[i] = 0; //terminate previous field with null
+            line->fields[line->numFields++] = line->buffer + i + 1; //start next field
             if (line->numFields == maxSplits) break;
-            line->buffer[i] = 0;
-            // Get ready for the next iteration.
-            fieldStart = i+1;
         }
     }
-    // replace the tab at the end of the line with a null char to terminate the final string.
+
+    // replace the newline with a null char so that it works like the rest of the fields.
     line->buffer[line->bufLen-1] = 0;
     line->split = true;
 }
+
 
 // Unsplit the fields back into a single string.
 // This will mung the strings, so only call this when all processing on the line is done.
@@ -556,6 +567,14 @@ struct less_str
    }
 };
 
+// This stores the map between RG IDs and RG numbers.
+typedef std::map<const char *, int, less_str> rgMap_t;
+
+inline void addRG(rgMap_t * rgs, char * item, int val)
+{
+    (*rgs)[item] = val;
+}
+
 // This stores the map between sequence names and sequence numbers.
 typedef std::map<const char *, int, less_str> seqMap_t;
 
@@ -580,9 +599,11 @@ struct state_struct
     FILE *         unmappedClippedFile;
     char *         unmappedClippedFileName;
     sigSet_t *     sigs;
+    rgMap_t        rgs;
     seqMap_t       seqs;
-    UINT32 *       seqLens;
     UINT64 *       seqOffs;
+    khash_t(i) *   grpNumHash;
+    UINT32         grpCount;
     splitLine_t ** splitterArray;
     int            splitterArrayMaxSize;
     UINT32         sigArraySize;
@@ -600,6 +621,8 @@ struct state_struct
     bool           addMateTags;
     bool           compatMode;
     bool           ignoreUnmated;
+    bool           opticalOnly;
+    bool           optPlusExAmp;
     bool           quiet;
 };
 typedef struct state_struct state_t;
@@ -618,6 +641,8 @@ state_t * makeState ()
     s->unmappedClippedFile = NULL;
     s->unmappedClippedFileName = (char *)"";
     s->sigs = NULL;
+    s->grpNumHash = kh_init(i);
+    s->grpCount = 0;
     s->minNonOverlap = 20;
     s->maxSplitCount = 2;
     s->minIndelSize = 50;
@@ -630,6 +655,8 @@ state_t * makeState ()
     s->addMateTags = false;
     s->compatMode = false;
     s->ignoreUnmated = false;
+    s->opticalOnly = false;
+    s->optPlusExAmp = false;
     s->quiet = false;
     // Start this as -1 to indicate we don't know yet.
     // Once we are outputting our first line, we will decide.
@@ -637,6 +664,9 @@ state_t * makeState ()
     // Used as a temporary location for ptrs to splitter for sort routine.
     s->splitterArrayMaxSize = 1000;
     s->splitterArray = (splitLine_t **)(malloc(s->splitterArrayMaxSize * sizeof(splitLine_t *)));
+    // initialze seqence info
+    s->seqOffs = (UINT64*)calloc(1, sizeof(UINT64));
+
     return s;
 }
 
@@ -649,12 +679,16 @@ void deleteState(state_t * s)
         for (UINT32 i=0; i<s->sigArraySize; i++) deleteHashTable(&(s->sigs[i]));
         free (s->sigs);
     }
+    for (seqMap_t::iterator iter = s->rgs.begin(); iter != s->rgs.end(); ++iter)
+    {
+        free((char *)(iter->first));
+    }
     for (seqMap_t::iterator iter = s->seqs.begin(); iter != s->seqs.end(); ++iter)
     {
         free((char *)(iter->first));
     }
-    if (s->seqLens != NULL) free(s->seqLens);
     if (s->seqOffs != NULL) free(s->seqOffs);
+    kh_destroy(i, s->grpNumHash); 
     delete s;
 }
 
@@ -668,21 +702,62 @@ void deleteState(state_t * s)
 //  without performance degradation on more standard genomes.
 // Thanks to https://github.com/carsonhh for the suggestion.
 /////////////////////////////////////////////////////////////////////////////
+
+// largest known genome is 150GB. 22 bits only gets us to 136GB with synthetic
+// super contigs and an int type array index. That's close enough. This leaves us
+// 20 bits in the signature that can be used to integrate RG, UMI, and tile info.
+#define BIN_SIZE ((UINT64)22)                      //bin window is 22 bits wide
+#define BIN_MASK ((UINT64)((1UL << BIN_SIZE)-1))   //bin window is 22 bits wide
+#define BIN_SHIFT ((UINT64)BIN_SIZE)               //bin window is 22 bits wide
+
+#define G_SIZE ((UINT64)(64-2*BIN_SIZE))           //group window is 20 bits wide
+#define G_MASK ((UINT64)((1UL << RG_SIZE)-1))      //group window is 20 bits wide
+#define G_SHIFT ((UINT64)(2*BIN_SIZE))             //group window is 20 bits wide
+
+
+
+#define RG_SIZE ((UINT64)20)                       //RG window is 20 bits wide
+#define RG_MASK ((UINT64)((1UL << RG_SIZE)-1))      //RG window is 20 bits wide
+#define RG_SHIFT ((UINT64)0)                       //RG window is 20 bits wide
+
+
+
+#define CELL_SIZE ((UINT64)(32-RG_SIZE))           //flowcell window is 12 bits wide
+#define CELL_MASK ((UINT64)((1UL << CELL_SIZE)-1)) //flowcell window is 12 bits wide
+#define CELL_SHIFT ((UINT64)(RG_SHIFT + RG_SIZE))  //flowcell window is 12 bits wide
+
+#define TILE_SIZE ((UINT64)(64-CELL_SIZE-RG_SIZE))    //tile window is 32 bits wide
+#define TILE_MASK ((UINT64)((1UL << TILE_SIZE)-1))    //tile window is 32 bits wide
+#define TILE_SHIFT ((UINT64)(CELL_SHIFT + CELL_SIZE)) //tile window is 32 bits wide
+
+#define UMI_SIZE ((UINT64)(64-RG_SIZE))               //UMI window is 44 bits wide
+#define UMI_MASK ((UINT64)((1UL << UMI_SIZE)-1))      //UMI window is 44 bits wide
+#define UMI_SHIFT ((UINT64)(RG_SHIFT + RG_SIZE))      //UMI window is 44 bits wide
+
+
+
 template <bool orphan>
 inline sgn_t calcSig(splitLine_t * first, splitLine_t * second)
 {
     UINT64 final;
+
+    // Copy required because grpNum is only 32 bit and it must be promoted
+    // BEFORE the bitshift operation. otherwise digits are lost
+    UINT64 rg1 = second->grpNum; //promotion to 64 bit via copy
+    UINT64 rg2 = (rg1 << G_SHIFT);
+
     if (orphan)
     {
         // For an orphan, we only use information fron the second read.
-        final = second->binPos;
+        final = rg2 | second->binPos;
     }
     else
     {
-        // Total nonsense to get the compiler to actually work.
-        UINT64 t1 = first->binPos;
-        UINT64 t2 = t1 << 32;
-        final = t2 | second->binPos;
+        // Copy required  because binPos is only 32 bit and it must be promoted
+        // BEFORE the bitshift operation. otherwise digits are lost
+        UINT64 t1 = first->binPos;  //promotion to 64 bit via copy
+        UINT64 t2 = (t1 << BIN_SHIFT);
+        final = rg2 | t2 | second->binPos;
     }
     return (sgn_t)final;
 }
@@ -709,17 +784,201 @@ inline UINT32 calcSigArrOff(splitLine_t * first, splitLine_t * second, int binCo
 // Sequences
 ///////////////////////////////////////////////////////////////////////////////
 
-inline int getSeqNum(splitLine_t * line, int field, state_t * state) __attribute__((always_inline));
-inline int getSeqNum(splitLine_t * line, int field, state_t * state)
+inline int getSeqNum(splitLine_t * line, state_t * state) __attribute__((always_inline));
+inline int getSeqNum(splitLine_t * line, state_t * state)
 {
-    seqMap_t::iterator findret = state->seqs.find(line->fields[field]);
+    seqMap_t::iterator findret = state->seqs.find(line->fields[RNAME]);
     if (findret == state->seqs.end())
     {
         char * temp;
-        asprintf(&temp, "samblaster: Unable to find sequence '%s' in sequence map for readid %s\n", line->fields[field], line->fields[QNAME]);
+        asprintf(&temp, "samblaster: Unable to find sequence '%s' in sequence map for readid %s\n", line->fields[RNAME], line->fields[QNAME]);
         fatalError(temp);
     }
     return findret->second;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Read Groups
+///////////////////////////////////////////////////////////////////////////////
+
+inline int getRgNum(splitLine_t * line, state_t * state) __attribute__((always_inline));
+inline int getRgNum(splitLine_t * line, state_t * state)
+{
+    //identify RG among tags
+    char * rg = strstr(line->fields[TAGS], "RG:Z:");
+    if(rg == NULL) return 0; //not found
+    rg += 5; //move to start of value
+
+    //process as cstring
+    seqMap_t::iterator findret;
+    char * end = strchr(rg, '\t');
+    if(end == NULL)
+    {
+        findret = state->rgs.find(rg);
+    }
+    else //make tab a temporary NULL for cstring
+    {
+        end[0] = 0;
+        findret = state->rgs.find(rg);
+        end[0] = '\t';
+    }
+
+    if (findret == state->rgs.end()) //not found
+    {
+        if(end != NULL) end[0] = 0; //change back to cstring for error
+        char * temp;
+        asprintf(&temp, "samblaster: Unable to find read group '%s' in RG map for readid %s\n", rg, line->fields[QNAME]);
+        fatalError(temp);
+    }
+    return findret->second;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Optical + Read Groups
+///////////////////////////////////////////////////////////////////////////////
+
+inline UINT32 getGrpNum(UINT64 key, state_t * state) __attribute__((always_inline));
+inline UINT32 getGrpNum(UINT64 key, state_t * state)
+{
+    khint_t iter;
+    iter = kh_get(i, state->grpNumHash, key);
+
+    //does not exist, so add it
+    if(iter == kh_end(state->grpNumHash)){
+        state->grpCount += 1;
+
+        //check values
+        if(state->grpCount > RG_MASK)
+        {
+            char * temp;
+            asprintf(&temp, "samblaster: Too many ReadGroup/Tile/FlowCellLane combinations\n");
+            fatalError(temp);
+        }
+
+        int ret;
+        iter = kh_put(i, state->grpNumHash, key, &ret);
+        kh_value(state->grpNumHash, iter) = state->grpCount;
+    }
+
+    return kh_value(state->grpNumHash, iter);
+}
+
+
+inline int getOpticalNum(splitLine_t * line, state_t * state) __attribute__((always_inline));
+inline int getOpticalNum(splitLine_t * line, state_t * state)
+{
+    char * qname = line->fields[QNAME];
+
+    //split read name on ':'
+    char * splits[10];
+    char * fields[10] = {qname};
+    int numFields = 1; //split field count
+    for (int i = 0; qname[i] != 0; ++i)
+    {
+        if(qname[i] == ':')
+        {
+            qname[i] = 0; //terminate previous field with null
+            splits[numFields-1] = qname + i; //end of this field
+            fields[numFields++] = qname + i + 1; //start next field
+            if (numFields > 8) break; //unrecognized format
+        }
+    }
+
+    //identify format
+    UINT64 cell;
+    UINT64 tile;
+    UINT64 rg = getRgNum(line, state);
+    if (numFields == 5) //ILLUMINA
+    {
+        cell = strtol(fields[1], NULL, 0) + 1; //forces greater than 0 value
+        tile = strtol(fields[2], NULL, 0) + 1; //forces greater than 0 value
+    }
+    else if (numFields == 7 || numFields == 8) //#ILLUMINA 1.8+
+    {
+        cell = strtol(fields[3], NULL, 0) + 1; //forces greater than 0 value
+        tile = strtol(fields[4], NULL, 0) + 1; //forces greater than 0 value
+    }
+    else { //unknown
+        cell = 0;
+        tile = 0;
+    }
+
+    //restore ':' at splits
+    for (int i=0; i < numFields-1; ++i)
+    {
+        splits[i][0] = ':';
+    }
+
+    //check values
+    if(cell > CELL_MASK || tile > TILE_MASK)
+    {
+        char * temp;
+        asprintf(&temp, "samblaster: Flowcell lane or tile number are too high to be real for readid '%s'\n", qname);
+        fatalError(temp);
+    }
+
+    //merge values
+    UINT64 final = (tile << TILE_SHIFT) | (cell << CELL_SHIFT) | rg;
+
+    //get hash for value
+    //fprintf(stderr, "%li\t%li\t%li\t%li\t%i\n", rg, cell, tile, final, getGrpNum(final, state)); //temp
+
+    return getGrpNum(final, state);
+}
+
+inline int getExAmpNum(splitLine_t * line, state_t * state) __attribute__((always_inline));
+inline int getExAmpNum(splitLine_t * line, state_t * state)
+{
+    char * qname = line->fields[QNAME];
+
+    //split read name on ':'
+    char * splits[10];
+    char * fields[10] = {qname};
+    int numFields = 1; //split field count
+    for (int i = 0; qname[i] != 0; ++i)
+    {
+        if(qname[i] == ':')
+        {
+            qname[i] = 0; //terminate previous field with null
+            splits[numFields-1] = qname + i; //end of this field
+            fields[numFields++] = qname + i + 1; //start next field
+            if (numFields > 8) break; //unrecognized format
+        }
+    }
+
+    //identify format
+    UINT64 cell;
+    UINT64 rg = getRgNum(line, state);
+    if (numFields == 5) //ILLUMINA
+    {
+        cell = strtol(fields[1], NULL, 0) + 1; //forces greater than 0 value
+    }
+    else if (numFields == 7 || numFields == 8) //#ILLUMINA 1.8+
+    {
+        cell = strtol(fields[3], NULL, 0) + 1; //forces greater than 0 value
+    }
+    else { //unknown
+        cell = 0;
+    }
+
+    //restore ':' at splits
+    for (int i=0; i < numFields-1; ++i)
+    {
+        splits[i][0] = ':';
+    }
+
+    //check values
+    if(cell > CELL_MASK)
+    {
+        char * temp;
+        asprintf(&temp, "samblaster: Flowcell lane number is are too high to be real for readid '%s'\n", qname);
+        fatalError(temp);
+    }
+
+    //merge values
+    UINT64 final = (cell << CELL_SHIFT) | rg;
+
+    return getGrpNum(final, state);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -825,14 +1084,6 @@ inline int getEndDiag(splitLine_t * line)
 ///////////////////////////////////////////////////////////////////////////////
 // Process SAM Blocks
 ///////////////////////////////////////////////////////////////////////////////
-// This was historically 27 bits as that was large enough to hold any human chrom 1 offset.
-// Now that we are using a synthetic genome representation, 27 has no special meaning.
-// There are interesting space/time trade-offs between how large we make the
-//   synthetic chroms and how large the various hash tables become.
-// If/when we handle RGs and/or UMIs, the signature scheme will change anyway.
-// Therefore, leave at 27 for now to match space/time tradeoffs of earlier releases.
-#define BIN_SHIFT ((UINT64)27)                  //bin window is 27 bits wide
-#define BIN_MASK ((UINT64)((1 << BIN_SHIFT)-1)) //bin window is 27 bits wide
 
 // This is apparently no longer called.
 void outputSAMBlock(splitLine_t * block, FILE * output)
@@ -961,7 +1212,21 @@ void prepareSigValues(splitLine_t * line, state_t * state, bool orphan)
     }
 
     // Now get the sequence number
-    line->seqNum = getSeqNum(line, RNAME, state);
+    line->seqNum = getSeqNum(line, state);
+
+    // Now get group number
+    if(state->optPlusExAmp)
+    {
+        line->grpNum = getExAmpNum(line, state);
+    }
+    else if(state->opticalOnly)
+    {
+        line->grpNum = getOpticalNum(line, state);
+    }
+    else
+    {
+        line->grpNum = getRgNum(line, state);
+    }
 
     // Calculate the genome relative position
     // We need to do the read pos padding to handle negative calculated sequence position for the alignment.
@@ -1347,6 +1612,8 @@ void printPGsamLine(FILE * f, state_t * s)
     else if (s->excludeDups && (s->discordantFile != NULL || s->splitterFile != NULL || s->unmappedClippedFile != NULL)) fprintf(f, " --excludeDups");
     if (s->addMateTags) fprintf(f, " --addMateTags");
     if (s->ignoreUnmated) fprintf(f, " --ignoreUnmated");
+    if (s->optPlusExAmp) fprintf(f, " --optPlusExAmp");
+    if (s->opticalOnly) fprintf(f, " --opticalOnly");
     if (s->maxReadLength != 500) fprintf(f, " --maxReadLength %d", s->maxReadLength);
     if (s->discordantFile != NULL) fprintf(f, " -d %s", s->discordantFileName);
     if (s->splitterFile != NULL)
@@ -1394,6 +1661,8 @@ void printUsageString()
         "-e --excludeDups          Exclude reads marked as duplicates from discordant, splitter, and/or unmapped file.\n"
         "-r --removeDups           Remove duplicates reads from all output files. (Implies --excludeDups).\n"
         "   --addMateTags          Add MC and MQ tags to all output paired-end SAM lines.\n"
+        "   --opticalOnly          Only mark reads on the same tile as duplicates (i.e. optical duplicates)\n"
+        "   --optPlusExAmp         Only mark reads on the same lane as duplicates (i.e. optical and ExAmp duplicates)\n"
         "   --ignoreUnmated        Suppress abort on unmated alignments. Use only when sure input is read-id grouped,\n"
         "                          and either paired-end alignments have been filtered or the input file contains singleton reads.\n"
         "-M                        Run in compatibility mode; both 0x100 and 0x800 are considered chimeric. Similar to BWA MEM -M option.\n"
@@ -1653,6 +1922,15 @@ int main (int argc, char *argv[])
         {
             state->ignoreUnmated = true;
         }
+        else if (streq(argv[argi],"--opticalOnly"))
+        {
+            state->opticalOnly = true;
+        }
+        else if (streq(argv[argi],"--optPlusExAmp"))
+        {
+            state->optPlusExAmp = true;
+            state->opticalOnly  = false;
+        }
         else if (streq(argv[argi],"-M"))
         {
             state->compatMode = true;
@@ -1772,13 +2050,11 @@ int main (int argc, char *argv[])
         if (state->unmappedClippedFile == NULL) fsError(state->unmappedClippedFileName);
     }
 
-    // Read in the SAM header and create the seqs structure.
-    state->seqLens = (UINT32*)calloc(1, sizeof(UINT32)); //initialize to 0
-    state->seqOffs = (UINT64*)calloc(1, sizeof(UINT64)); //initialize to 0
-    state->seqs[strdup("*")] = 0;
-    state->seqLens[0] = padLength(0, state);
+    // Read in the SAM header and create the RG and seqs structures.
+    state->seqs[strdup("*")] = 0; //only unmapped to start
     state->seqOffs[0] = 0;
-    int count = 1;
+    int scount = 1; //0 is reserved for unknown or '*'
+    int rcount = 1; //0 is reserved for no read group
     UINT64 totalLen = 0;
     splitLine_t * line;
     // Read the first line to prime the loop, and also to allow checking for malformed input.
@@ -1798,8 +2074,8 @@ int main (int argc, char *argv[])
                 if (strncmp(line->fields[i], "SN:", 3) == 0)
                 {
                     seqID = line->fields[i]+3;
-                    seqNum = count;
-                    count += 1;
+                    seqNum = scount;
+                    scount += 1;
                 }
                 else if (strncmp(line->fields[i], "LN:", 3) == 0)
                 {
@@ -1812,18 +2088,38 @@ int main (int argc, char *argv[])
             // Unless we are marking dups, we don't need to use sequence numbers.
             if (!state->acceptDups)
             {
-                // grow seqLens and seqOffs arrays
+                // grow seqOffs arrays
                 if(seqNum % 32768 == 1)
                 {
-                    state->seqLens = (UINT32*)realloc(state->seqLens, (seqNum+32768)*sizeof(UINT32));
                     state->seqOffs = (UINT64*)realloc(state->seqOffs, (seqNum+32768)*sizeof(UINT64));
                 }
 
                 state->seqs[strdup(seqID)] = seqNum;
-                state->seqLens[seqNum] = seqLen;
                 state->seqOffs[seqNum] = seqOff;
             }
         }
+        // Process input line to see if it defines a sequence.
+        else if (streq(line->fields[0], "@RG"))
+        {
+            char * rgID = NULL;
+            int rgNum = 0;
+            for (int i=1; i<line->numFields; ++i)
+            {
+                if (strncmp(line->fields[i], "ID:", 3) == 0)
+                {
+                    rgID = line->fields[i]+3;
+                    rgNum = rcount;
+                    rcount += 1;
+                }
+            }
+
+            // Unless we are marking dups, we don't need to use read groups.
+            if (!state->acceptDups)
+            {
+                state->rgs[strdup(rgID)] = rgNum;
+            }
+        }
+
         // Output the header line.
         writeLine(line, state->outputFile);
         if (state->discordantFile != NULL)
@@ -1842,13 +2138,13 @@ int main (int argc, char *argv[])
     printPGsamLine(state->splitterFile, state);
 
     // Make sure we have a header.
-    if (count == 1 && !state->acceptDups)
+    if (scount == 1 && !state->acceptDups)
     {
         fatalError("samblaster: Missing header on input sam file.  Exiting.\n");
     }
 
     // Don't count the "*" entry.
-    fprintf(stderr, "samblaster: Loaded %d header sequence entries.\n", count-1);
+    fprintf(stderr, "samblaster: Loaded %d header sequence entries.\n", scount-1);
 
     // Make sure we have any more lines to process.
     if (line == NULL)
@@ -1864,7 +2160,7 @@ int main (int argc, char *argv[])
         int binCount = (totalLen >> BIN_SHIFT);
         if (binCount >= (1 << 15))
         {
-            fatalError("samblaster: Too many sequences in header of input sam file.  Exiting.\n");
+            fatalError("samblaster: total length of sequences found in sam file is too high.  Exiting.\n");
         }
 
         state->binCount = binCount;
@@ -1878,7 +2174,6 @@ int main (int argc, char *argv[])
     // line already has the first such line in it unless the file only has a header.
     // Keep a ptr to the end of the current list.
     splitLine_t * last = line;
-    count = 1;
     while (true)
     {
         splitLine_t * nextLine = readLine(state->inputFile);
@@ -1887,7 +2182,6 @@ int main (int argc, char *argv[])
         {
             processSAMBlock(line, state);
             last = line = nextLine;
-            count = 1;
         }
         else
         {
@@ -1895,7 +2189,6 @@ int main (int argc, char *argv[])
             //     we need to be a little careful about how we make the list.
             last->next = nextLine;
             last = nextLine;
-            count += 1;
         }
     }
     // We need to process the final set.
